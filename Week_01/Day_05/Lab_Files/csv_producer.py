@@ -44,7 +44,7 @@ def validate_row(row):
 def main():
     producer = KafkaProducer(
         bootstrap_servers="localhost:9092",
-        key_serializer=lambda k: k.encode("utf-8"),
+        key_serializer=lambda k: k.encode("utf-8") if k is not None else None,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
     filename = "logistics.csv"

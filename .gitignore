@@ -179,3 +179,10 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Lab runtime artifacts
+Week_*/Day_*/Lab_Files/data/
+Week_*/Day_*/Lab_Files/logs/
+Week_*/Day_*/Lab_Files/out/tight/
+Week_*/Day_*/Lab/*.bak
+*.docx.bak

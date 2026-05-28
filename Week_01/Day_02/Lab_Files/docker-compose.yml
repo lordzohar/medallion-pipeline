@@ -15,6 +15,7 @@ services:
     container_name: day2_kafka
     environment:
       KAFKA_PROCESS_ROLES: 'broker,controller'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
       # Unique ID for the broker in the quorum
       KAFKA_NODE_ID: 1
       # The controller quorum voters specify the node IDs and addresses
