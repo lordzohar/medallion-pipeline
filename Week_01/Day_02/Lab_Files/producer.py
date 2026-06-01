@@ -1,68 +1,108 @@
 #!/usr/bin/env python3
 """
-Kafka Producer Example (Day 2 Lab)
+Day 2 Kafka producer: publish order events to an event bus topic.
 
-This script demonstrates how to produce messages to an Apache Kafka topic
-from Python using the `kafka-python` library.  It sends a series of
-simple text events with a key so you can observe how messages are
-distributed across partitions.  You can modify the `topic_name`,
-`num_messages` and key logic to experiment with different patterns.
+This example uses kafka-python because it is small enough for a beginner lab:
 
-Prerequisites:
-  - Kafka cluster running locally at `localhost:9092` (use the provided
-    Docker Compose file to start a broker).
-  - The `kafka-python` library installed:  `pip install kafka-python`
+    python -m pip install kafka-python
+    python producer.py
 
-Example usage:
-  python producer.py
-
-During the lab, try changing the key from a fixed value to a computed
-value (e.g., based on the loop index) and observe how the records
-distribute across partitions.  You can also adjust `acks` in the
-producer configuration to experiment with different delivery guarantees.
+What this script teaches:
+  - KafkaProducer is the application-side client.
+  - value_serializer turns a Python dict into bytes.
+  - key_serializer turns the business key into bytes.
+  - producer.send(...) publishes an event record to a topic.
+  - producer.flush() waits for queued records before the script exits.
 """
 
 from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from kafka import KafkaProducer
+from kafka.producer.future import FutureRecordMetadata
+
+
+TOPIC_NAME = "order-events"
 
 
 def json_serializer(data: Any) -> bytes:
-    """Serialize Python objects to JSON encoded bytes."""
-    return json.dumps(data).encode("utf-8")
+    """Convert Python objects to JSON bytes for Kafka."""
+    return json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def key_serializer(key: str) -> bytes:
+    """Convert the business key to bytes."""
+    return key.encode("utf-8")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def build_order_event(order_id: str, status: str, amount: float) -> dict[str, Any]:
+    """Create one event-bus message payload."""
+    return {
+        "event_type": "OrderStatusChanged",
+        "event_time": utc_now(),
+        "order_id": order_id,
+        "status": status,
+        "amount": amount,
+        "currency": "INR",
+        "source_system": "checkout-service",
+    }
+
+
+def report_delivery(future: FutureRecordMetadata, order_id: str) -> None:
+    """Block for lab visibility and print where Kafka stored the event."""
+    metadata = future.get(timeout=10)
+    print(
+        "published",
+        f"order_id={order_id}",
+        f"topic={metadata.topic}",
+        f"partition={metadata.partition}",
+        f"offset={metadata.offset}",
+    )
 
 
 def main() -> None:
-    topic_name = "demo-topic"
-    num_messages = 10
-
-    # Configure the producer.  `acks` controls delivery semantics:
-    # 0 = fire and forget, 1 = leader acknowledgment, -1/all = leader + replicas.
     producer = KafkaProducer(
         bootstrap_servers=["localhost:9092"],
+        client_id="checkout-service-producer",
+        key_serializer=key_serializer,
         value_serializer=json_serializer,
-        key_serializer=lambda k: k.encode("utf-8"),
         acks="all",
-        linger_ms=5,
-        batch_size=16384,
+        linger_ms=10,
+        batch_size=32_768,
+        compression_type="gzip",
+        retries=5,
+        retry_backoff_ms=200,
+        request_timeout_ms=30_000,
     )
 
+    events = [
+        build_order_event("ORD-1001", "PAID", 1299.00),
+        build_order_event("ORD-1002", "PAID", 799.00),
+        build_order_event("ORD-1001", "PACKED", 1299.00),
+        build_order_event("ORD-1003", "PAYMENT_FAILED", 1499.00),
+        build_order_event("ORD-1001", "SHIPPED", 1299.00),
+    ]
+
     try:
-        for i in range(num_messages):
-            # Use a key to demonstrate partitioning.  Messages with the same key
-            # will land in the same partition.  Try changing `key` to a
-            # different value or derive from `i` to see the effect.
-            key = "partition-key"
-            value = {"id": i, "message": f"hello event {i}"}
-            producer.send(topic_name, key=key, value=value)
-            print(f"Sent message {i} to {topic_name}")
-            time.sleep(0.1)
+        for event in events:
+            order_id = event["order_id"]
+            future = producer.send(
+                TOPIC_NAME,
+                key=order_id,
+                value=event,
+                headers=[("event_type", event["event_type"].encode("utf-8"))],
+            )
+            report_delivery(future, order_id)
+            time.sleep(0.2)
     finally:
-        # Wait for all messages to be delivered before exiting
         producer.flush()
         producer.close()
 

@@ -1,54 +1,73 @@
 #!/usr/bin/env python3
 """
-Kafka Consumer Example (Day 2 Lab)
+Day 2 Kafka consumer: read order events from the event bus topic.
 
-This script demonstrates how to consume messages from an Apache Kafka
-topic using the `kafka-python` library.  It reads events from the
-beginning of the specified topic and prints the key, value and offset
-information.  You can run multiple instances of this consumer with the
-same `group_id` to see how Kafka partitions are assigned across
-consumers.
+Run this in one terminal before running producer.py in another terminal:
 
-Prerequisites:
-  - Kafka cluster running locally at `localhost:9092` (use the provided
-    Docker Compose file to start a broker).
-  - The `kafka-python` library installed:  `pip install kafka-python`
+    python -m pip install kafka-python
+    python consumer.py
 
-Example usage:
-  python consumer.py
-
-During the lab, try changing the `group_id` to spawn separate consumer
-groups and observe how they each receive all messages independently.
-You can also toggle `auto_offset_reset` between `earliest` and `latest`
-to control where new consumers start reading.
+What this script teaches:
+  - KafkaConsumer subscribes to a topic.
+  - value_deserializer turns Kafka bytes back into a Python dict.
+  - key_deserializer turns the Kafka key back into a string.
+  - message.value is business data.
+  - message.topic, partition and offset are Kafka delivery metadata.
 """
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from kafka import KafkaConsumer
 
 
-def main() -> None:
-    topic_name = "demo-topic"
+TOPIC_NAME = "order-events"
 
+
+def json_deserializer(data: bytes) -> dict[str, Any]:
+    """Convert JSON bytes from Kafka into a Python dict."""
+    return json.loads(data.decode("utf-8"))
+
+
+def key_deserializer(data: bytes | None) -> str | None:
+    """Convert Kafka key bytes into a Python string."""
+    if data is None:
+        return None
+    return data.decode("utf-8")
+
+
+def main() -> None:
     consumer = KafkaConsumer(
-        topic_name,
+        TOPIC_NAME,
         bootstrap_servers=["localhost:9092"],
-        group_id="demo-group",
+        client_id="order-notification-client",
+        group_id="order-notification-service",
+        auto_offset_reset="earliest",
         enable_auto_commit=True,
-        auto_offset_reset="earliest",  # start from beginning if no committed offset
-        value_deserializer=lambda x: x.decode("utf-8"),
-        key_deserializer=lambda x: x.decode("utf-8") if x is not None else None,
+        key_deserializer=key_deserializer,
+        value_deserializer=json_deserializer,
+        consumer_timeout_ms=15_000,
     )
 
-    print(f"Subscribed to topic {topic_name}, waiting for messages...\n")
+    print(f"Listening for events on topic '{TOPIC_NAME}'. Press Ctrl+C to stop.\n")
     try:
         for message in consumer:
-            key = message.key
-            value = message.value
-            partition = message.partition
-            offset = message.offset
-            print(f"Partition {partition}, offset {offset}, key={key}, value={value}")
+            event = message.value
+            print(
+                "received",
+                f"event_type={event['event_type']}",
+                f"order_id={event['order_id']}",
+                f"status={event['status']}",
+                f"key={message.key}",
+                f"topic={message.topic}",
+                f"partition={message.partition}",
+                f"offset={message.offset}",
+            )
+        print("\nNo more records arrived within 15 seconds; consumer stopped.")
+    except KeyboardInterrupt:
+        print("\nStopping consumer.")
     finally:
         consumer.close()
 
