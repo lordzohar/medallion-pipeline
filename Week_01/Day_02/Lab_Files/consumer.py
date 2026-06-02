@@ -18,6 +18,8 @@ What this script teaches:
 from __future__ import annotations
 
 import json
+import time
+from json import JSONDecodeError
 from typing import Any
 
 from kafka import KafkaConsumer
@@ -26,9 +28,14 @@ from kafka import KafkaConsumer
 TOPIC_NAME = "order-events"
 
 
-def json_deserializer(data: bytes) -> dict[str, Any]:
+def json_deserializer(data: bytes | None) -> dict[str, Any] | None:
     """Convert JSON bytes from Kafka into a Python dict."""
-    return json.loads(data.decode("utf-8"))
+    if not data:
+        return None
+    try:
+        return json.loads(data.decode("utf-8"))
+    except JSONDecodeError:
+        return None
 
 
 def key_deserializer(data: bytes | None) -> str | None:
@@ -48,23 +55,43 @@ def main() -> None:
         enable_auto_commit=True,
         key_deserializer=key_deserializer,
         value_deserializer=json_deserializer,
-        consumer_timeout_ms=15_000,
     )
 
     print(f"Listening for events on topic '{TOPIC_NAME}'. Press Ctrl+C to stop.\n")
     try:
-        for message in consumer:
-            event = message.value
-            print(
-                "received",
-                f"event_type={event['event_type']}",
-                f"order_id={event['order_id']}",
-                f"status={event['status']}",
-                f"key={message.key}",
-                f"topic={message.topic}",
-                f"partition={message.partition}",
-                f"offset={message.offset}",
-            )
+        stop_after_seconds = 15
+        deadline = time.monotonic() + stop_after_seconds
+
+        while time.monotonic() < deadline:
+            records = consumer.poll(timeout_ms=1_000)
+            if not records:
+                continue
+
+            deadline = time.monotonic() + stop_after_seconds
+            for messages in records.values():
+                for message in messages:
+                    event = message.value
+                    if event is None:
+                        print(
+                            "skipped",
+                            f"key={message.key}",
+                            f"topic={message.topic}",
+                            f"partition={message.partition}",
+                            f"offset={message.offset}",
+                            "reason=empty-or-invalid-json",
+                        )
+                        continue
+
+                    print(
+                        "received",
+                        f"event_type={event['event_type']}",
+                        f"order_id={event['order_id']}",
+                        f"status={event['status']}",
+                        f"key={message.key}",
+                        f"topic={message.topic}",
+                        f"partition={message.partition}",
+                        f"offset={message.offset}",
+                    )
         print("\nNo more records arrived within 15 seconds; consumer stopped.")
     except KeyboardInterrupt:
         print("\nStopping consumer.")
