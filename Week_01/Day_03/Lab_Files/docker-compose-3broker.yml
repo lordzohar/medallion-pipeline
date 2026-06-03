@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Docker Compose configuration for Day 3 lab - 3-broker KRaft cluster
 # with Kafka Connect and Kafka UI.
 
