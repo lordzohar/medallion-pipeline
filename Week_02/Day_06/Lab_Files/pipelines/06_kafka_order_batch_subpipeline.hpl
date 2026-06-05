@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>06_kafka_order_batch_subpipeline</name>
+    <description>Parse Kafka order events, keep NEW orders, deduplicate, republish cleaned events, and aggregate by customer.</description>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters/>
+    <created_user>-</created_user>
+    <created_date>2026/06/05</created_date>
+    <modified_user>-</modified_user>
+    <modified_date>2026/06/05</modified_date>
+    <key_for_session_key>UUID</key_for_session_key>
+    <is_key_private>N</is_key_private>
+  </info>
+  <notepads/>
+  <order>
+    <hop><from>Kafka Batch Rows</from><to>Parse Event JSON</to><enabled>Y</enabled></hop>
+    <hop><from>Parse Event JSON</from><to>Keep NEW Events</to><enabled>Y</enabled></hop>
+    <hop><from>Keep NEW Events</from><to>Sort By Order</to><enabled>Y</enabled></hop>
+    <hop><from>Keep NEW Events</from><to>Ignored Events</to><enabled>Y</enabled></hop>
+    <hop><from>Sort By Order</from><to>Unique Orders</to><enabled>Y</enabled></hop>
+    <hop><from>Unique Orders</from><to>Build Clean Event</to><enabled>Y</enabled></hop>
+    <hop><from>Build Clean Event</from><to>Publish orders.cleaned</to><enabled>Y</enabled></hop>
+    <hop><from>Unique Orders</from><to>Sort By Customer</to><enabled>Y</enabled></hop>
+    <hop><from>Sort By Customer</from><to>Aggregate Customer Orders</to><enabled>Y</enabled></hop>
+    <hop><from>Aggregate Customer Orders</from><to>Build Aggregate Event</to><enabled>Y</enabled></hop>
+    <hop><from>Build Aggregate Event</from><to>Publish orders.customer_totals</to><enabled>Y</enabled></hop>
+  </order>
+  <transform>
+    <name>Kafka Batch Rows</name>
+    <type>Injector</type>
+    <description>Receives rows from the Kafka Consumer parent pipeline.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <fields>
+      <field><name>message_key</name><type>String</type><length>-1</length><precision>-1</precision></field>
+      <field><name>message</name><type>String</type><length>-1</length><precision>-1</precision></field>
+      <field><name>topic</name><type>String</type><length>-1</length><precision>-1</precision></field>
+      <field><name>offset</name><type>Integer</type><length>-1</length><precision>0</precision></field>
+      <field><name>partition</name><type>Integer</type><length>-1</length><precision>0</precision></field>
+      <field><name>kafka_timestamp</name><type>Integer</type><length>-1</length><precision>0</precision></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Parse Event JSON</name>
+    <type>ScriptValueMod</type>
+    <description>Parse Kafka JSON messages into typed fields.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>ParseEvent</jsScript_name>
+        <jsScript_script><![CDATA[
+var event = JSON.parse(message);
+var order_id = parseInt(event.order_id, 10);
+var customer_id = parseInt(event.customer_id, 10);
+var product_id = event.product_id == null ? "" : String(event.product_id);
+var status = event.status == null ? "" : String(event.status).toUpperCase();
+var amount = parseFloat(event.amount);
+var event_time = event.event_time == null ? "" : String(event.event_time);
+        ]]></jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field><name>order_id</name><rename>order_id</rename><type>Integer</type><length>-1</length><precision>0</precision><replace>N</replace></field>
+      <field><name>customer_id</name><rename>customer_id</rename><type>Integer</type><length>-1</length><precision>0</precision><replace>N</replace></field>
+      <field><name>product_id</name><rename>product_id</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+      <field><name>status</name><rename>status</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+      <field><name>amount</name><rename>amount</rename><type>Number</type><length>-1</length><precision>2</precision><replace>N</replace></field>
+      <field><name>event_time</name><rename>event_time</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Keep NEW Events</name>
+    <type>FilterRows</type>
+    <description>Only NEW order events move into the cleaned stream.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <send_true_to>Sort By Order</send_true_to>
+    <send_false_to>Ignored Events</send_false_to>
+    <compare>
+      <condition>
+        <negated>N</negated>
+        <leftValueType>FIELD</leftValueType>
+        <leftValue>status</leftValue>
+        <function>=</function>
+        <rightValueType>STRING</rightValueType>
+        <rightValue>NEW</rightValue>
+      </condition>
+    </compare>
+  </transform>
+  <transform>
+    <name>Ignored Events</name>
+    <type>Dummy</type>
+    <description>Non-NEW events stop here.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+  </transform>
+  <transform>
+    <name>Sort By Order</name>
+    <type>SortRows</type>
+    <description>Sort before order-level deduplication.</description>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <directory>${PROJECT_HOME}/output</directory>
+    <prefix>sort_kafka_orders</prefix>
+    <sort_size>1000000</sort_size>
+    <fields>
+      <field><name>order_id</name><ascending>Y</ascending><case_sensitive>N</case_sensitive></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Unique Orders</name>
+    <type>Unique</type>
+    <description>Remove duplicate order_id values inside the batch.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <count_rows>Y</count_rows>
+    <count_field>event_duplicate_count</count_field>
+    <fields>
+      <field><name>order_id</name></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Build Clean Event</name>
+    <type>ScriptValueMod</type>
+    <description>Create the JSON payload for orders.cleaned.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>CleanEvent</jsScript_name>
+        <jsScript_script><![CDATA[
+var clean_message = JSON.stringify({
+  order_id: order_id,
+  customer_id: customer_id,
+  product_id: product_id,
+  status: status,
+  amount: amount,
+  event_time: event_time
+});
+        ]]></jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field><name>clean_message</name><rename>clean_message</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Publish orders.cleaned</name>
+    <type>KafkaProducerOutput</type>
+    <description>Publish cleaned NEW order events to Kafka.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <directBootstrapServers>kafka:29092</directBootstrapServers>
+    <clientId>hop-day6-cleaned-orders</clientId>
+    <topic>orders.cleaned</topic>
+    <keyField>order_id</keyField>
+    <messageField>clean_message</messageField>
+    <options>
+      <option><property>acks</property><value>all</value></option>
+    </options>
+  </transform>
+  <transform>
+    <name>Sort By Customer</name>
+    <type>SortRows</type>
+    <description>Sort cleaned orders before customer aggregation.</description>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <directory>${PROJECT_HOME}/output</directory>
+    <prefix>sort_kafka_customers</prefix>
+    <sort_size>1000000</sort_size>
+    <fields>
+      <field><name>customer_id</name><ascending>Y</ascending><case_sensitive>N</case_sensitive></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Aggregate Customer Orders</name>
+    <type>GroupBy</type>
+    <description>Aggregate cleaned events by customer inside the Kafka batch.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <pass_all_rows>N</pass_all_rows>
+    <ignore_aggregate>N</ignore_aggregate>
+    <fields_in_group>
+      <field><name>customer_id</name></field>
+    </fields_in_group>
+    <aggregate_ignoremissing>N</aggregate_ignoremissing>
+    <fields>
+      <field><aggregate>order_count</aggregate><subject>order_id</subject><type>COUNT</type><valuefield/></field>
+      <field><aggregate>total_amount</aggregate><subject>amount</subject><type>SUM</type><valuefield/></field>
+      <field><aggregate>average_amount</aggregate><subject>amount</subject><type>AVERAGE</type><valuefield/></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Build Aggregate Event</name>
+    <type>ScriptValueMod</type>
+    <description>Create the JSON payload for customer totals.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>AggregateEvent</jsScript_name>
+        <jsScript_script><![CDATA[
+var aggregate_message = JSON.stringify({
+  customer_id: customer_id,
+  order_count: order_count,
+  total_amount: total_amount,
+  average_amount: average_amount
+});
+        ]]></jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field><name>aggregate_message</name><rename>aggregate_message</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Publish orders.customer_totals</name>
+    <type>KafkaProducerOutput</type>
+    <description>Publish per-customer aggregate messages to Kafka.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <directBootstrapServers>kafka:29092</directBootstrapServers>
+    <clientId>hop-day6-customer-totals</clientId>
+    <topic>orders.customer_totals</topic>
+    <keyField>customer_id</keyField>
+    <messageField>aggregate_message</messageField>
+    <options>
+      <option><property>acks</property><value>all</value></option>
+    </options>
+  </transform>
+  <transform_error_handling/>
+  <attributes/>
+</pipeline>

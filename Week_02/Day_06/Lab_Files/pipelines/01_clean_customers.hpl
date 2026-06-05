@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>01_clean_customers</name>
+    <description>Clean customer data, normalize strings, reject invalid rows, sort, and deduplicate.</description>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters/>
+    <created_user>-</created_user>
+    <created_date>2026/06/05</created_date>
+    <modified_user>-</modified_user>
+    <modified_date>2026/06/05</modified_date>
+    <key_for_session_key>UUID</key_for_session_key>
+    <is_key_private>N</is_key_private>
+  </info>
+  <notepads/>
+  <order>
+    <hop><from>Read Customers</from><to>Normalize Fields</to><enabled>Y</enabled></hop>
+    <hop><from>Normalize Fields</from><to>Keep Valid Customers</to><enabled>Y</enabled></hop>
+    <hop><from>Keep Valid Customers</from><to>Sort By Customer</to><enabled>Y</enabled></hop>
+    <hop><from>Keep Valid Customers</from><to>Rejected Customers</to><enabled>Y</enabled></hop>
+    <hop><from>Sort By Customer</from><to>Unique Customers</to><enabled>Y</enabled></hop>
+    <hop><from>Unique Customers</from><to>Customers Cleaned CSV</to><enabled>Y</enabled></hop>
+  </order>
+  <transform>
+    <name>Read Customers</name>
+    <type>CsvInput</type>
+    <description>Read raw customer records.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <filename>${PROJECT_HOME}/data/customers.csv</filename>
+    <has_header>Y</has_header>
+    <has_no_empty_lines>Y</has_no_empty_lines>
+    <delimiter>,</delimiter>
+    <enclosure>"</enclosure>
+    <escape_char/>
+    <fields>
+      <field><name>customer_id</name><type>Integer</type><format/><currency/><decimal_symbol>.</decimal_symbol><group_symbol>,</group_symbol><length>-1</length><precision>0</precision><trim_type>both</trim_type></field>
+      <field><name>name</name><type>String</type><format/><currency/><decimal_symbol/><group_symbol/><length>-1</length><precision>-1</precision><trim_type>both</trim_type></field>
+      <field><name>email</name><type>String</type><format/><currency/><decimal_symbol/><group_symbol/><length>-1</length><precision>-1</precision><trim_type>both</trim_type></field>
+      <field><name>phone</name><type>String</type><format/><currency/><decimal_symbol/><group_symbol/><length>-1</length><precision>-1</precision><trim_type>both</trim_type></field>
+      <field><name>country</name><type>String</type><format/><currency/><decimal_symbol/><group_symbol/><length>-1</length><precision>-1</precision><trim_type>both</trim_type></field>
+      <field><name>order_amount</name><type>Number</type><format>0.00</format><currency/><decimal_symbol>.</decimal_symbol><group_symbol>,</group_symbol><length>-1</length><precision>2</precision><trim_type>both</trim_type></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Normalize Fields</name>
+    <type>ScriptValueMod</type>
+    <description>Trim names, lower-case email, normalize country and phone fields.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>Normalize</jsScript_name>
+        <jsScript_script><![CDATA[
+var customer_name = name == null ? "" : String(name).trim();
+var email_clean = email == null ? "" : String(email).trim().toLowerCase();
+var country_normalized = country == null ? "" : String(country).trim().toUpperCase();
+var phone_normalized = phone == null ? "" : String(phone).trim();
+if (phone_normalized.indexOf("00") == 0) {
+  phone_normalized = "+" + phone_normalized.substring(2);
+}
+var processed_at = new Date();
+        ]]></jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field><name>customer_name</name><rename>customer_name</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+      <field><name>email_clean</name><rename>email_clean</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+      <field><name>country_normalized</name><rename>country_normalized</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+      <field><name>phone_normalized</name><rename>phone_normalized</rename><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+      <field><name>processed_at</name><rename>processed_at</rename><type>Date</type><length>-1</length><precision>-1</precision><replace>N</replace></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Keep Valid Customers</name>
+    <type>FilterRows</type>
+    <description>Route rows with an email to the clean path and blanks to the reject file.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <send_true_to>Sort By Customer</send_true_to>
+    <send_false_to>Rejected Customers</send_false_to>
+    <compare>
+      <condition>
+        <negated>N</negated>
+        <leftValueType>FIELD</leftValueType>
+        <leftValue>email_clean</leftValue>
+        <function>&lt;&gt;</function>
+        <rightValueType>STRING</rightValueType>
+        <rightValue/>
+      </condition>
+    </compare>
+  </transform>
+  <transform>
+    <name>Sort By Customer</name>
+    <type>SortRows</type>
+    <description>Sort before Unique Rows.</description>
+    <distribute>N</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <directory>${PROJECT_HOME}/output</directory>
+    <prefix>sort_customers</prefix>
+    <sort_size>1000000</sort_size>
+    <fields>
+      <field><name>customer_id</name><ascending>Y</ascending><case_sensitive>N</case_sensitive></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Unique Customers</name>
+    <type>Unique</type>
+    <description>Keep one record per customer_id and count duplicate rows.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <count_rows>Y</count_rows>
+    <count_field>duplicate_count</count_field>
+    <fields>
+      <field><name>customer_id</name></field>
+    </fields>
+  </transform>
+  <transform>
+    <name>Customers Cleaned CSV</name>
+    <type>TextFileOutput</type>
+    <description>Write cleaned customer records.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <separator>,</separator>
+    <enclosure>"</enclosure>
+    <enclosure_forced>N</enclosure_forced>
+    <header>Y</header>
+    <footer>N</footer>
+    <format>DOS</format>
+    <compression>None</compression>
+    <encoding>UTF-8</encoding>
+    <fileNameInField>N</fileNameInField>
+    <file_name_base>${PROJECT_HOME}/output/customers_cleaned</file_name_base>
+    <file_name_extension>csv</file_name_extension>
+    <split_every/>
+    <add_date>N</add_date>
+    <add_time>N</add_time>
+    <SpecifyFormat>N</SpecifyFormat>
+    <add_to_result_filenames>Y</add_to_result_filenames>
+    <create_parent_folder>Y</create_parent_folder>
+  </transform>
+  <transform>
+    <name>Rejected Customers</name>
+    <type>TextFileOutput</type>
+    <description>Write rejected customer records for inspection.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <partitioning><method>none</method><schema_name/></partitioning>
+    <separator>,</separator>
+    <enclosure>"</enclosure>
+    <header>Y</header>
+    <format>DOS</format>
+    <compression>None</compression>
+    <encoding>UTF-8</encoding>
+    <file_name_base>${PROJECT_HOME}/output/customers_rejected</file_name_base>
+    <file_name_extension>csv</file_name_extension>
+    <add_to_result_filenames>Y</add_to_result_filenames>
+    <create_parent_folder>Y</create_parent_folder>
+  </transform>
+  <transform_error_handling/>
+  <attributes/>
+</pipeline>

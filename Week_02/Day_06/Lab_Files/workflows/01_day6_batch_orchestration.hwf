@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow>
+  <name>01_day6_batch_orchestration</name>
+  <name_sync_with_filename>Y</name_sync_with_filename>
+  <description>Run the Day 6 batch transformations and database verification in order.</description>
+  <extended_description/>
+  <workflow_version/>
+  <created_user>-</created_user>
+  <created_date>2026/06/05 00:00:00.000</created_date>
+  <modified_user>-</modified_user>
+  <modified_date>2026/06/05 00:00:00.000</modified_date>
+  <parameters/>
+  <actions>
+    <action>
+      <name>Start</name>
+      <description/>
+      <type>SPECIAL</type>
+      <attributes/>
+      <DayOfMonth>1</DayOfMonth>
+      <hour>12</hour>
+      <intervalMinutes>60</intervalMinutes>
+      <intervalSeconds>0</intervalSeconds>
+      <minutes>0</minutes>
+      <repeat>N</repeat>
+      <schedulerType>0</schedulerType>
+      <weekDay>1</weekDay>
+      <parallel>N</parallel>
+      <xloc>64</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>First Pipeline</name>
+      <description>Run 00_first_pipeline_csv_to_csv.hpl.</description>
+      <type>PIPELINE</type>
+      <attributes/>
+      <add_date>N</add_date>
+      <add_time>N</add_time>
+      <clear_files>N</clear_files>
+      <clear_rows>N</clear_rows>
+      <create_parent_folder>N</create_parent_folder>
+      <exec_per_row>N</exec_per_row>
+      <filename>${PROJECT_HOME}/pipelines/00_first_pipeline_csv_to_csv.hpl</filename>
+      <loglevel>Basic</loglevel>
+      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>
+      <params_from_previous>N</params_from_previous>
+      <run_configuration>local</run_configuration>
+      <set_append_logfile>N</set_append_logfile>
+      <set_logfile>N</set_logfile>
+      <wait_until_finished>Y</wait_until_finished>
+      <parallel>N</parallel>
+      <xloc>224</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>Clean Customers</name>
+      <description>Run 01_clean_customers.hpl.</description>
+      <type>PIPELINE</type>
+      <attributes/>
+      <add_date>N</add_date>
+      <add_time>N</add_time>
+      <clear_files>N</clear_files>
+      <clear_rows>N</clear_rows>
+      <create_parent_folder>N</create_parent_folder>
+      <exec_per_row>N</exec_per_row>
+      <filename>${PROJECT_HOME}/pipelines/01_clean_customers.hpl</filename>
+      <loglevel>Basic</loglevel>
+      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>
+      <params_from_previous>N</params_from_previous>
+      <run_configuration>local</run_configuration>
+      <set_append_logfile>N</set_append_logfile>
+      <set_logfile>N</set_logfile>
+      <wait_until_finished>Y</wait_until_finished>
+      <parallel>N</parallel>
+      <xloc>432</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>Enrich Orders</name>
+      <description>Run 02_enrich_orders.hpl.</description>
+      <type>PIPELINE</type>
+      <attributes/>
+      <add_date>N</add_date>
+      <add_time>N</add_time>
+      <clear_files>N</clear_files>
+      <clear_rows>N</clear_rows>
+      <create_parent_folder>N</create_parent_folder>
+      <exec_per_row>N</exec_per_row>
+      <filename>${PROJECT_HOME}/pipelines/02_enrich_orders.hpl</filename>
+      <loglevel>Basic</loglevel>
+      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>
+      <params_from_previous>N</params_from_previous>
+      <run_configuration>local</run_configuration>
+      <set_append_logfile>N</set_append_logfile>
+      <set_logfile>N</set_logfile>
+      <wait_until_finished>Y</wait_until_finished>
+      <parallel>N</parallel>
+      <xloc>640</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>Write Customers PostgreSQL</name>
+      <description>Run 03_write_customers_postgres.hpl.</description>
+      <type>PIPELINE</type>
+      <attributes/>
+      <add_date>N</add_date>
+      <add_time>N</add_time>
+      <clear_files>N</clear_files>
+      <clear_rows>N</clear_rows>
+      <create_parent_folder>N</create_parent_folder>
+      <exec_per_row>N</exec_per_row>
+      <filename>${PROJECT_HOME}/pipelines/03_write_customers_postgres.hpl</filename>
+      <loglevel>Basic</loglevel>
+      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>
+      <params_from_previous>N</params_from_previous>
+      <run_configuration>local</run_configuration>
+      <set_append_logfile>N</set_append_logfile>
+      <set_logfile>N</set_logfile>
+      <wait_until_finished>Y</wait_until_finished>
+      <parallel>N</parallel>
+      <xloc>848</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>Read Customers PostgreSQL</name>
+      <description>Run 04_read_customers_postgres.hpl.</description>
+      <type>PIPELINE</type>
+      <attributes/>
+      <add_date>N</add_date>
+      <add_time>N</add_time>
+      <clear_files>N</clear_files>
+      <clear_rows>N</clear_rows>
+      <create_parent_folder>N</create_parent_folder>
+      <exec_per_row>N</exec_per_row>
+      <filename>${PROJECT_HOME}/pipelines/04_read_customers_postgres.hpl</filename>
+      <loglevel>Basic</loglevel>
+      <parameters><pass_all_parameters>Y</pass_all_parameters></parameters>
+      <params_from_previous>N</params_from_previous>
+      <run_configuration>local</run_configuration>
+      <set_append_logfile>N</set_append_logfile>
+      <set_logfile>N</set_logfile>
+      <wait_until_finished>Y</wait_until_finished>
+      <parallel>N</parallel>
+      <xloc>1056</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>Success</name>
+      <description/>
+      <type>SUCCESS</type>
+      <attributes/>
+      <parallel>N</parallel>
+      <xloc>1200</xloc>
+      <yloc>160</yloc>
+      <attributes_hac/>
+    </action>
+    <action>
+      <name>Failure</name>
+      <description/>
+      <type>ABORT</type>
+      <attributes/>
+      <message>Day 6 workflow failed. Review the pipeline log for the failed action.</message>
+      <parallel>N</parallel>
+      <xloc>848</xloc>
+      <yloc>320</yloc>
+      <attributes_hac/>
+    </action>
+  </actions>
+  <hops>
+    <hop><from>Start</from><to>First Pipeline</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>Y</unconditional></hop>
+    <hop><from>First Pipeline</from><to>Clean Customers</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Clean Customers</from><to>Enrich Orders</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Enrich Orders</from><to>Write Customers PostgreSQL</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Write Customers PostgreSQL</from><to>Read Customers PostgreSQL</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Read Customers PostgreSQL</from><to>Success</to><enabled>Y</enabled><evaluation>Y</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>First Pipeline</from><to>Failure</to><enabled>Y</enabled><evaluation>N</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Clean Customers</from><to>Failure</to><enabled>Y</enabled><evaluation>N</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Enrich Orders</from><to>Failure</to><enabled>Y</enabled><evaluation>N</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Write Customers PostgreSQL</from><to>Failure</to><enabled>Y</enabled><evaluation>N</evaluation><unconditional>N</unconditional></hop>
+    <hop><from>Read Customers PostgreSQL</from><to>Failure</to><enabled>Y</enabled><evaluation>N</evaluation><unconditional>N</unconditional></hop>
+  </hops>
+  <notepads/>
+  <attributes/>
+</workflow>

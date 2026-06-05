@@ -1,4 +1,0 @@
-order_id,customer_id,product_id,status,amount
-1,101,P1,NEW,100
-2,102,P2,NEW,50
-3,103,P3,CANCELED,30
