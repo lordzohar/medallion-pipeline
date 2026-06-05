@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
+    "_record_hash": "cb9b0e2aa0effe93",
+    "amount": 75.0,
+    "customer_id": 502,
+    "event_id": "evt-004",
+    "op": "u",
+    "order_id": 1002,
+    "order_ts": "2026-06-01T10:25:00Z",
+    "source": "orders-db",
+    "source_lsn": 103,
+    "status": "PAID",
+    "table": "orders"
+  }
+]

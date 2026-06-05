@@ -25,8 +25,10 @@ QUARANTINE = OUTPUT / "quarantine"
 
 KAFKA_TOPICS = {
     "orders": "northstar.orders.public.orders",
+    "inventory": "northstar.inventory.inventorydb.inventory",
     "clickstream": "northstar.clickstream.events",
     "logistics": "northstar.logistics.csv",
+    "dlq": "northstar.ingestion.dlq",
 }
 KAFKA_TOPIC_TO_BRONZE = {
     KAFKA_TOPICS["orders"]: BRONZE / "orders_cdc.json",
@@ -105,6 +107,33 @@ def bronze_load() -> dict:
     }
 
 
+def topic_partitions_for(consumer, topics: list[str], timeout_seconds: float = 10.0):
+    from kafka import TopicPartition
+
+    deadline = time.monotonic() + timeout_seconds
+    assignments = []
+    while time.monotonic() < deadline:
+        assignments = []
+        for topic in topics:
+            partitions = consumer.partitions_for_topic(topic)
+            if partitions is None:
+                assignments = []
+                break
+            assignments.extend(TopicPartition(topic, partition) for partition in partitions)
+        if assignments:
+            return sorted(assignments, key=lambda tp: (tp.topic, tp.partition))
+        time.sleep(0.25)
+    missing = [topic for topic in topics if consumer.partitions_for_topic(topic) is None]
+    raise RuntimeError(f"Kafka topic metadata was not available for: {', '.join(missing)}")
+
+
+def reached_end_offsets(consumer, end_offsets: dict) -> bool:
+    for topic_partition, end_offset in end_offsets.items():
+        if consumer.position(topic_partition) < end_offset:
+            return False
+    return True
+
+
 def decode_kafka_json(raw: bytes | None) -> dict:
     if raw is None:
         return {}
@@ -116,14 +145,14 @@ def decode_kafka_json(raw: bytes | None) -> dict:
 
 def unwrap_connect_payload(value: dict) -> dict:
     payload = value.get("payload")
-    if isinstance(payload, dict) and {"before", "after", "op"}.intersection(payload):
+    if isinstance(payload, dict) and ("before" in payload or "after" in payload):
         return payload
     return value
 
 
 def normalize_order_event_from_kafka(value: dict, offset: int) -> dict | None:
     value = unwrap_connect_payload(value)
-    if not {"before", "after", "op"}.intersection(value):
+    if "before" not in value and "after" not in value:
         return value
 
     op = value.get("op")
@@ -151,6 +180,33 @@ def normalize_order_event_from_kafka(value: dict, offset: int) -> dict | None:
         "table": source.get("table", "orders"),
     }
     return normalized
+
+
+def normalize_inventory_event_from_kafka(value: dict, offset: int) -> dict | None:
+    value = unwrap_connect_payload(value)
+    if "before" not in value and "after" not in value:
+        return value
+
+    op = value.get("op")
+    source = value.get("source") if isinstance(value.get("source"), dict) else {}
+    row = value.get("after") if op != "d" else value.get("before")
+    if not isinstance(row, dict):
+        return None
+
+    source_pos = source.get("pos") or source.get("file") or offset
+    item_id = row.get("id")
+    return {
+        "event_id": f"dbz-inventory-{source_pos}-{op}-{item_id}-{offset}",
+        "op": op,
+        "inventory_id": item_id,
+        "product_name": row.get("product_name"),
+        "quantity": row.get("quantity"),
+        "last_updated": row.get("last_updated"),
+        "source": source.get("name", "inventory-db"),
+        "source_file": source.get("file"),
+        "source_pos": source.get("pos", offset),
+        "table": source.get("table", "inventory"),
+    }
 
 
 def load_file_bronze_without_reset(loaded_at: str, include_orders: bool = True) -> dict:
@@ -191,8 +247,8 @@ def bronze_load_from_kafka(
     group_id = group_id or f"day5-bronze-loader-{uuid4()}"
     rows_by_topic = {topic: [] for topic in KAFKA_TOPIC_TO_BRONZE}
 
+    topics = list(KAFKA_TOPIC_TO_BRONZE.keys())
     consumer = KafkaConsumer(
-        *KAFKA_TOPIC_TO_BRONZE.keys(),
         bootstrap_servers=bootstrap_servers,
         auto_offset_reset="earliest",
         enable_auto_commit=False,
@@ -202,8 +258,12 @@ def bronze_load_from_kafka(
         consumer_timeout_ms=500,
     )
     try:
+        assignments = topic_partitions_for(consumer, topics)
+        consumer.assign(assignments)
+        consumer.seek_to_beginning(*assignments)
+        end_offsets = consumer.end_offsets(assignments)
         deadline = time.monotonic() + idle_timeout_seconds
-        while time.monotonic() < deadline:
+        while not reached_end_offsets(consumer, end_offsets) and time.monotonic() < deadline:
             polled = consumer.poll(timeout_ms=500, max_records=100)
             if not polled:
                 continue
@@ -295,6 +355,63 @@ def bronze_load_debezium_orders(
     metrics["kafka_group_id"] = group_id
     metrics["orders_source"] = "debezium"
     return metrics
+
+
+def bronze_load_debezium_inventory(
+    bootstrap_servers: str = "localhost:9092",
+    group_id: str | None = None,
+    idle_timeout_seconds: float = 5.0,
+) -> dict:
+    try:
+        from kafka import KafkaConsumer
+    except ImportError as exc:
+        raise RuntimeError("Inventory CDC mode requires kafka-python. Install it with: pip install kafka-python") from exc
+
+    loaded_at = datetime.now(timezone.utc).isoformat()
+    group_id = group_id or f"day5-debezium-inventory-loader-{uuid4()}"
+    rows = []
+
+    consumer = KafkaConsumer(
+        bootstrap_servers=bootstrap_servers,
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
+        group_id=group_id,
+        key_deserializer=lambda m: m.decode("utf-8") if m else None,
+        value_deserializer=decode_kafka_json,
+        consumer_timeout_ms=500,
+    )
+    try:
+        assignments = topic_partitions_for(consumer, [KAFKA_TOPICS["inventory"]])
+        consumer.assign(assignments)
+        consumer.seek_to_beginning(*assignments)
+        end_offsets = consumer.end_offsets(assignments)
+        deadline = time.monotonic() + idle_timeout_seconds
+        while not reached_end_offsets(consumer, end_offsets) and time.monotonic() < deadline:
+            polled = consumer.poll(timeout_ms=500, max_records=100)
+            if not polled:
+                continue
+            deadline = time.monotonic() + idle_timeout_seconds
+            for messages in polled.values():
+                for message in messages:
+                    normalized = normalize_inventory_event_from_kafka(dict(message.value), message.offset)
+                    if normalized is None:
+                        continue
+                    bronze_record = add_bronze_metadata(normalized, loaded_at)
+                    bronze_record["_kafka_topic"] = message.topic
+                    bronze_record["_kafka_partition"] = message.partition
+                    bronze_record["_kafka_offset"] = message.offset
+                    bronze_record["_kafka_key"] = message.key
+                    rows.append(bronze_record)
+    finally:
+        consumer.close()
+
+    rows = sorted(rows, key=lambda r: (str(r.get("source_file") or ""), int(r.get("source_pos") or 0), r["_kafka_partition"], r["_kafka_offset"]))
+    write_json_records(BRONZE / "inventory_cdc.json", rows)
+    return {
+        "inventory_bronze": len(rows),
+        "inventory_source": "debezium-mysql",
+        "kafka_group_id": group_id,
+    }
 
 
 def build_silver() -> dict:
@@ -405,12 +522,63 @@ def build_silver() -> dict:
         "valid_current_orders": len(order_rows),
         "valid_shipments": len(shipments_valid),
         "dlq_records": len(dlq),
-        "latest_order_lsn": max(int(r["last_source_lsn"]) for r in order_rows),
+        "latest_order_lsn": max((int(r["last_source_lsn"]) for r in order_rows), default=0),
     }
     (SILVER / "data_quality_report.json").write_text(
         json.dumps(quality_report, indent=2, sort_keys=True), encoding="utf-8"
     )
     return quality_report
+
+
+def build_silver_inventory() -> dict:
+    inventory_path = BRONZE / "inventory_cdc.json"
+    if not inventory_path.exists():
+        write_csv(SILVER / "inventory_current.csv", [], ["inventory_id", "product_name", "quantity", "last_updated", "last_source_pos"])
+        return {"inventory_current_rows": 0}
+
+    current_inventory = {}
+    for event in read_json_records(inventory_path):
+        item_id = str(event["inventory_id"])
+        if event["op"] == "d":
+            current_inventory.pop(item_id, None)
+        else:
+            current_inventory[item_id] = {
+                "inventory_id": item_id,
+                "product_name": event["product_name"],
+                "quantity": str(event["quantity"]),
+                "last_updated": str(event.get("last_updated") or ""),
+                "last_source_pos": str(event.get("source_pos") or ""),
+            }
+
+    rows = sorted(current_inventory.values(), key=lambda r: int(r["inventory_id"]))
+    write_csv(
+        SILVER / "inventory_current.csv",
+        rows,
+        ["inventory_id", "product_name", "quantity", "last_updated", "last_source_pos"],
+    )
+    return {"inventory_current_rows": len(rows)}
+
+
+def publish_quarantine_to_kafka(bootstrap_servers: str = "localhost:9092") -> dict:
+    try:
+        from kafka import KafkaProducer
+    except ImportError as exc:
+        raise RuntimeError("Kafka DLQ publishing requires kafka-python. Install it with: pip install kafka-python") from exc
+
+    dlq_path = QUARANTINE / "dlq_logistics.json"
+    records = read_json_records(dlq_path) if dlq_path.exists() else []
+    producer = KafkaProducer(
+        bootstrap_servers=bootstrap_servers,
+        key_serializer=lambda k: k.encode("utf-8") if k else None,
+        value_serializer=lambda v: json.dumps(v, sort_keys=True).encode("utf-8"),
+    )
+    for record in records:
+        errors = ",".join(record.get("errors", []))
+        source = record.get("source", "unknown")
+        producer.send(KAFKA_TOPICS["dlq"], key=f"{source}:{errors}", value=record)
+    producer.flush()
+    producer.close()
+    return {"published_dlq_records": len(records), "dlq_topic": KAFKA_TOPICS["dlq"]}
 
 
 def build_gold() -> dict:
@@ -523,11 +691,32 @@ def run_all_from_debezium_orders(bootstrap_servers: str = "localhost:9092") -> d
     return metrics
 
 
+def run_inventory_from_debezium(bootstrap_servers: str = "localhost:9092") -> dict:
+    metrics = {}
+    metrics.update(bronze_load_debezium_inventory(bootstrap_servers=bootstrap_servers))
+    metrics.update(build_silver_inventory())
+    (OUTPUT / "run_summary.json").write_text(
+        json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    return metrics
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command",
-        choices=["bronze", "bronze-kafka", "bronze-debezium-orders", "silver", "gold", "all", "all-kafka", "all-debezium-orders"],
+        choices=[
+            "bronze",
+            "bronze-kafka",
+            "bronze-debezium-orders",
+            "inventory-debezium",
+            "publish-dlq",
+            "silver",
+            "gold",
+            "all",
+            "all-kafka",
+            "all-debezium-orders",
+        ],
     )
     parser.add_argument("--bootstrap-servers", default="localhost:9092")
     parser.add_argument("--run-id", default=None, help="Only consume lab records produced with this run id")
@@ -544,6 +733,10 @@ def main() -> None:
         )
     elif args.command == "bronze-debezium-orders":
         print(json.dumps(bronze_load_debezium_orders(bootstrap_servers=args.bootstrap_servers), indent=2, sort_keys=True))
+    elif args.command == "inventory-debezium":
+        print(json.dumps(run_inventory_from_debezium(bootstrap_servers=args.bootstrap_servers), indent=2, sort_keys=True))
+    elif args.command == "publish-dlq":
+        print(json.dumps(publish_quarantine_to_kafka(bootstrap_servers=args.bootstrap_servers), indent=2, sort_keys=True))
     elif args.command == "silver":
         print(json.dumps(build_silver(), indent=2, sort_keys=True))
     elif args.command == "gold":

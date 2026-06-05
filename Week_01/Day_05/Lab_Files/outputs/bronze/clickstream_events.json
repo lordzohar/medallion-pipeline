@@ -1,6 +1,6 @@
 [
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "baf950a0054d3fd2",
     "event_id": "clk-001",
     "event_ts": "2026-06-01T09:20:00Z",
@@ -10,7 +10,7 @@
     "user_id": "u-501"
   },
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "deb5202963e1e324",
     "event_id": "clk-002",
     "event_ts": "2026-06-01T09:35:00Z",
@@ -20,7 +20,7 @@
     "user_id": "u-502"
   },
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "5a043f3abe1dbeab",
     "event_id": "clk-003",
     "event_ts": "2026-06-01T10:00:00Z",
@@ -30,7 +30,7 @@
     "user_id": "u-501"
   },
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "cf3651fd49aecae1",
     "event_id": "clk-004",
     "event_ts": "2026-06-01T08:59:00Z",

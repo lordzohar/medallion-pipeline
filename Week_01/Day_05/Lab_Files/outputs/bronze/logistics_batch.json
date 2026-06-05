@@ -1,6 +1,6 @@
 [
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "892a7d0b0efa62f0",
     "carrier": "BlueDart",
     "event_ts": "2026-06-01T12:00:00Z",
@@ -9,7 +9,7 @@
     "status": "IN_TRANSIT"
   },
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "47974f03c59fcb29",
     "carrier": "Delhivery",
     "event_ts": "2026-06-01T12:10:00Z",
@@ -18,7 +18,7 @@
     "status": "DELIVERED"
   },
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "6ea723a13bb31918",
     "carrier": "BlueDart",
     "event_ts": "2026-06-01T12:20:00Z",
@@ -27,7 +27,7 @@
     "status": "CREATED"
   },
   {
-    "_bronze_loaded_at": "2026-06-05T05:50:29.833005+00:00",
+    "_bronze_loaded_at": "2026-06-05T08:00:15.923350+00:00",
     "_record_hash": "c19b46cf7ce37d72",
     "carrier": "Ekart",
     "event_ts": "2026-06-01T12:30:00Z",
