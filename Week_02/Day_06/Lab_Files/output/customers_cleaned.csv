@@ -1,4 +1,0 @@
-customer_id,name,email,phone,country,order_amount,customer_name,email_clean,country_normalized,phone_normalized,processed_at,duplicate_count
-101,Alice Meyer,ALICE@EXAMPLE.COM,0049123456789,de,100.00,Alice Meyer,alice@example.com,DE,+49123456789,2026/06/08 07:05:05.266,2
-102,Bob Singh,bob@example.com,00919876543210,in,50.00,Bob Singh,bob@example.com,IN,+919876543210,2026/06/08 07:05:05.270,1
-103,Charlie Rossi,charlie@example.com,0039061234567,it,30.00,Charlie Rossi,charlie@example.com,IT,+39061234567,2026/06/08 07:05:05.271,1
