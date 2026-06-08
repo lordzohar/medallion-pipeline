@@ -1,60 +1,92 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <pipeline>
   <info>
+    <pipeline_version/>
+    <capture_transform_performance>N</capture_transform_performance>
+    <transform_performance_capturing_delay>1000</transform_performance_capturing_delay>
+    <transform_performance_capturing_size_limit>100</transform_performance_capturing_size_limit>
+    <pipeline_type>Normal</pipeline_type>
+    <pipeline_status>0</pipeline_status>
+    <parameters/>
     <name>00_first_pipeline_csv_to_csv</name>
+    <name_sync_with_filename>N</name_sync_with_filename>
     <description>First Apache Hop pipeline: read a source CSV and write a new CSV target.</description>
     <extended_description/>
-    <pipeline_version/>
-    <pipeline_type>Normal</pipeline_type>
-    <parameters/>
     <created_user>-</created_user>
-    <created_date>2026/06/05</created_date>
     <modified_user>-</modified_user>
-    <modified_date>2026/06/05</modified_date>
-    <key_for_session_key>UUID</key_for_session_key>
-    <is_key_private>N</is_key_private>
+    <created_date>2026/06/08 05:08:33.629</created_date>
+    <modified_date>2026/06/08 05:08:33.629</modified_date>
   </info>
-  <notepads/>
-  <order>
-    <hop><from>CSV file input</from><to>Text file output</to><enabled>Y</enabled></hop>
-  </order>
   <transform>
-    <name>CSV file input</name>
     <type>CsvInput</type>
-    <description>Read the simple source file used in the first-pipeline walkthrough.</description>
-    <distribute>Y</distribute>
-    <copies>1</copies>
-    <partitioning><method>none</method><schema_name/></partitioning>
+    <name>CSV file input</name>
     <filename>${PROJECT_HOME}/data/first_pipeline_source.csv</filename>
     <filename_field/>
-    <rownum_field/>
     <include_filename>N</include_filename>
+    <rownum_field/>
+    <header>Y</header>
     <separator>,</separator>
     <enclosure>"</enclosure>
-    <header>Y</header>
     <buffer_size>50000</buffer_size>
     <lazy_conversion>N</lazy_conversion>
     <add_filename_result>Y</add_filename_result>
     <parallel>N</parallel>
-    <newline_possible>N</newline_possible>
     <encoding>UTF-8</encoding>
+    <newline_possible>N</newline_possible>
+    <ignoreFields>N</ignoreFields>
     <fields>
-      <field><name>customer_id</name><type>Integer</type><format/><currency/><decimal_symbol>.</decimal_symbol><group_symbol>,</group_symbol><length>-1</length><precision>0</precision><trim_type>both</trim_type></field>
-      <field><name>customer_name</name><type>String</type><format/><currency/><decimal_symbol/><group_symbol/><length>-1</length><precision>-1</precision><trim_type>both</trim_type></field>
-      <field><name>city</name><type>String</type><format/><currency/><decimal_symbol/><group_symbol/><length>-1</length><precision>-1</precision><trim_type>both</trim_type></field>
+      <field>
+        <name>customer_id</name>
+        <length>-1</length>
+        <type>Integer</type>
+        <format/>
+        <trim_type>both</trim_type>
+        <precision>0</precision>
+        <currency/>
+        <decimal/>
+        <group/>
+      </field>
+      <field>
+        <name>customer_name</name>
+        <length>-1</length>
+        <type>String</type>
+        <format/>
+        <trim_type>both</trim_type>
+        <precision>-1</precision>
+        <currency/>
+        <decimal/>
+        <group/>
+      </field>
+      <field>
+        <name>city</name>
+        <length>-1</length>
+        <type>String</type>
+        <format/>
+        <trim_type>both</trim_type>
+        <precision>-1</precision>
+        <currency/>
+        <decimal/>
+        <group/>
+      </field>
     </fields>
+    <distribute>Y</distribute>
+    <copies>1</copies>
     <GUI>
       <xloc>120</xloc>
       <yloc>180</yloc>
     </GUI>
+    <description>Read the simple source file used in the first-pipeline walkthrough.</description>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <attributes/>
   </transform>
   <transform>
-    <name>Text file output</name>
     <type>TextFileOutput</type>
-    <description>Write the copied CSV file.</description>
-    <distribute>Y</distribute>
-    <copies>1</copies>
-    <partitioning><method>none</method><schema_name/></partitioning>
+    <name>Text file output</name>
+    <compression>None</compression>
+    <create_parent_folder>Y</create_parent_folder>
     <separator>,</separator>
     <enclosure>"</enclosure>
     <enclosure_forced>N</enclosure_forced>
@@ -62,17 +94,15 @@
     <header>Y</header>
     <footer>N</footer>
     <format>DOS</format>
-    <compression>None</compression>
     <encoding>UTF-8</encoding>
     <endedLine/>
     <fileNameInField>N</fileNameInField>
     <fileNameField/>
-    <create_parent_folder>Y</create_parent_folder>
+    <ignore_fields>N</ignore_fields>
     <file>
       <name>${PROJECT_HOME}/output/first_pipeline_result</name>
-      <servlet_output>N</servlet_output>
       <do_not_open_new_file_init>N</do_not_open_new_file_init>
-      <extention>csv</extention>
+      <extension>csv</extension>
       <append>N</append>
       <split>N</split>
       <haspartno>N</haspartno>
@@ -85,11 +115,28 @@
       <fast_dump>N</fast_dump>
       <splitevery/>
     </file>
+    <fields/>
+    <distribute>Y</distribute>
+    <copies>1</copies>
     <GUI>
       <xloc>420</xloc>
       <yloc>180</yloc>
     </GUI>
+    <description>Write the copied CSV file.</description>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <attributes/>
   </transform>
-  <transform_error_handling/>
+  <order>
+    <hop>
+      <from>CSV file input</from>
+      <to>Text file output</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <notepads/>
   <attributes/>
+  <transform_error_handling/>
 </pipeline>

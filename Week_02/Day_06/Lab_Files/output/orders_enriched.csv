@@ -1,0 +1,5 @@
+order_id,customer_id,product_id,status,amount,product_name,category,product_category,amount_with_tax,discount_amount,net_amount,processed_at
+1,101,P1,NEW,100.00,Laptop,Electronics,ELECTRONICS,110.0,5.0,105.0,2026/06/08 07:05:06.511
+2,102,P2,NEW,50.00,Smartphone,Electronics,ELECTRONICS,55.0,0.0,55.0,2026/06/08 07:05:06.514
+3,103,P3,CANCELED,30.00,Headphones,Accessories,ACCESSORIES,33.0,0.0,33.0,2026/06/08 07:05:06.515
+4,101,P2,NEW,80.00,Smartphone,Electronics,ELECTRONICS,88.0,0.0,88.0,2026/06/08 07:05:06.515

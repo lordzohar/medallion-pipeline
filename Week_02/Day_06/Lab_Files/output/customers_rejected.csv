@@ -1,0 +1,2 @@
+customer_id,name,email,phone,country,order_amount,customer_name,email_clean,country_normalized,phone_normalized,processed_at
+104,Dana Null,,0015550104,us,75.00,Dana Null,,US,+15550104,2026/06/08 07:05:05.273
