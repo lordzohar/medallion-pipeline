@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from datetime import date, datetime
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -85,16 +86,27 @@ FX_SCHEMA = StructType(
 
 
 def spark_session(app_name: str) -> SparkSession:
-    spark = (
-        SparkSession.builder.appName(app_name)
-        .config("spark.sql.session.timeZone", "UTC")
-        .config("spark.sql.shuffle.partitions", "4")
-        .config("spark.driver.memory", "512m")
-        .config("spark.executor.memory", "512m")
-        .config("spark.memory.fraction", "0.6")
-        .config("spark.driver.maxResultSize", "256m")
-        .getOrCreate()
-    )
+    os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    try:
+        spark = (
+            SparkSession.builder.appName(app_name)
+            .config("spark.sql.session.timeZone", "UTC")
+            .config("spark.sql.shuffle.partitions", "4")
+            .config("spark.driver.memory", "512m")
+            .config("spark.executor.memory", "512m")
+            .config("spark.memory.fraction", "0.6")
+            .config("spark.driver.maxResultSize", "256m")
+            .getOrCreate()
+        )
+    except RuntimeError as exc:
+        if "Java gateway process exited before sending its port number" not in str(exc):
+            raise
+        raise RuntimeError(
+            "Spark's local Java gateway did not start. In Jupyter, restart the kernel, "
+            "close old Spark notebooks if several are running, then rerun the setup/import cells. "
+            "Also confirm Java is installed with `java -version`."
+        ) from exc
     spark.sparkContext.setLogLevel("WARN")
     return spark
 
