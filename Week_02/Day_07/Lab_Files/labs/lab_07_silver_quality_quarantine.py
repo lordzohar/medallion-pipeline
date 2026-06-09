@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pyspark.sql import functions as F
+from day7_common import LAKE_DIR, OUTPUT_DIR, cleaned_orders, ensure_output_dirs, quality_checked_orders, read_bronze_orders, require_source_data, spark_session, write_csv_dir, write_parquet
 
-from day7_common import LAKE_DIR, OUTPUT_DIR, cleaned_orders, ensure_output_dirs, quality_checked_orders, read_bronze_orders, require_source_data, spark_session, write_csv_dir
+from pyspark.sql import functions as F
 
 
 def main() -> None:
@@ -16,18 +16,21 @@ def main() -> None:
 
     valid_path = LAKE_DIR / "silver" / "orders_valid"
     quarantine_path = LAKE_DIR / "quarantine" / "orders_invalid"
-    valid.write.mode("overwrite").parquet(str(valid_path))
-    invalid.write.mode("overwrite").parquet(str(quarantine_path))
+    write_parquet(valid, valid_path, mode="overwrite")
+    write_parquet(invalid, quarantine_path, mode="overwrite")
 
-    summary = checked.groupBy("is_valid").count().orderBy("is_valid")
-    write_csv_dir(summary, OUTPUT_DIR / "lab_07_quality_summary")
+    control_table = checked.groupBy("is_valid").count().withColumnRenamed("count", "row_count").orderBy("is_valid")
+    write_csv_dir(control_table, OUTPUT_DIR / "lab_07_quality_control_table")
     write_csv_dir(
         invalid.select(
             "event_id",
             "order_id",
+            "status",
+            "amount",
+            "currency",
             F.concat_ws("|", F.col("quality_errors")).alias("quality_errors"),
         ).orderBy("event_id"),
-        OUTPUT_DIR / "lab_07_quarantine_preview",
+        OUTPUT_DIR / "lab_07_quarantine_records",
     )
 
     print("LAB 07 COMPLETE")

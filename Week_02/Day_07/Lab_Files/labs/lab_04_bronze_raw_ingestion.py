@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from day7_common import LAKE_DIR, OUTPUT_DIR, clean_lab_dir, ensure_output_dirs, read_order_events, require_source_data, spark_session, with_bronze_metadata, write_csv_dir
+from day7_common import LAKE_DIR, OUTPUT_DIR, clean_lab_dir, ensure_output_dirs, read_order_events, require_source_data, spark_session, with_bronze_metadata, write_csv_dir, read_parquet, write_parquet
 
 
 def main() -> None:
@@ -10,10 +10,10 @@ def main() -> None:
 
     bronze_path = clean_lab_dir(LAKE_DIR / "bronze" / "orders_raw")
     bronze = with_bronze_metadata(read_order_events(spark), "manual-full-load-001")
-    bronze.write.mode("overwrite").parquet(str(bronze_path))
+    write_parquet(bronze, bronze_path, mode="overwrite")
 
     by_file = (
-        spark.read.parquet(str(bronze_path))
+        read_parquet(spark, bronze_path)
         .groupBy("_source_file")
         .count()
         .orderBy("_source_file")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from day7_common import LAKE_DIR, OUTPUT_DIR, cleaned_orders, ensure_output_dirs, read_bronze_orders, require_source_data, spark_session, write_csv_dir
+from day7_common import LAKE_DIR, OUTPUT_DIR, cleaned_orders, ensure_output_dirs, read_bronze_orders, require_source_data, spark_session, write_csv_dir, write_parquet
 
 
 def main() -> None:
@@ -10,7 +10,7 @@ def main() -> None:
 
     clean_candidate = cleaned_orders(read_bronze_orders(spark))
     silver_path = LAKE_DIR / "silver" / "orders_clean_candidate"
-    clean_candidate.write.mode("overwrite").parquet(str(silver_path))
+    write_parquet(clean_candidate, silver_path, mode="overwrite")
 
     preview = clean_candidate.select(
         "event_id", "order_id", "customer_id", "product_id", "status", "amount", "currency", "event_time_ts"

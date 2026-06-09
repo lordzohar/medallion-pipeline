@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from day7_common import LAKE_DIR, OUTPUT_DIR, deduplicate_order_events, ensure_output_dirs, latest_order_state, require_source_data, spark_session, write_csv_dir
+from day7_common import LAKE_DIR, OUTPUT_DIR, deduplicate_order_events, ensure_output_dirs, latest_order_state, require_source_data, spark_session, write_csv_dir, read_parquet, write_parquet
 
 
 def main() -> None:
@@ -8,12 +8,12 @@ def main() -> None:
     ensure_output_dirs()
     spark = spark_session("Day7Lab08CdcLatestState")
 
-    valid = spark.read.parquet(str(LAKE_DIR / "silver" / "orders_valid"))
+    valid = read_parquet(spark, LAKE_DIR / "silver" / "orders_valid")
     deduplicated = deduplicate_order_events(valid)
-    deduplicated.write.mode("overwrite").parquet(str(LAKE_DIR / "silver" / "orders_deduplicated"))
+    write_parquet(deduplicated, LAKE_DIR / "silver" / "orders_deduplicated", mode="overwrite")
     current = latest_order_state(deduplicated)
     current_path = LAKE_DIR / "silver" / "orders_current"
-    current.write.mode("overwrite").parquet(str(current_path))
+    write_parquet(current, current_path, mode="overwrite")
 
     write_csv_dir(
         deduplicated.select("order_id", "event_id", "status", "amount", "currency", "event_time_ts").orderBy(

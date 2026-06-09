@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from day7_common import LAKE_DIR, OUTPUT_DIR, enriched_orders, ensure_output_dirs, require_source_data, spark_session, write_csv_dir
+from day7_common import LAKE_DIR, OUTPUT_DIR, enriched_orders, ensure_output_dirs, require_source_data, spark_session, write_csv_dir, read_parquet, write_parquet
 
 
 def main() -> None:
@@ -8,10 +8,10 @@ def main() -> None:
     ensure_output_dirs()
     spark = spark_session("Day7Lab09DimensionEnrichment")
 
-    current = spark.read.parquet(str(LAKE_DIR / "silver" / "orders_current"))
+    current = read_parquet(spark, LAKE_DIR / "silver" / "orders_current")
     enriched = enriched_orders(spark, current)
     enriched_path = LAKE_DIR / "silver" / "orders_enriched"
-    enriched.write.mode("overwrite").parquet(str(enriched_path))
+    write_parquet(enriched, enriched_path, mode="overwrite")
 
     write_csv_dir(
         enriched.select(

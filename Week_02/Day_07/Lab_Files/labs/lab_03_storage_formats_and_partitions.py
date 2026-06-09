@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pyspark.sql import functions as F
+from day7_common import LAKE_DIR, OUTPUT_DIR, ORDER_SOURCE_FILES, ensure_output_dirs, read_order_events, require_source_data, spark_session, write_csv_dir, read_parquet, write_parquet
 
-from day7_common import LAKE_DIR, OUTPUT_DIR, ORDER_SOURCE_FILES, ensure_output_dirs, read_order_events, require_source_data, spark_session, write_csv_dir
+from pyspark.sql import functions as F
 
 
 def main() -> None:
@@ -17,10 +17,10 @@ def main() -> None:
     )
 
     parquet_path = LAKE_DIR / "playground" / "orders_by_status_parquet"
-    orders.write.mode("overwrite").partitionBy("status").parquet(str(parquet_path))
+    write_parquet(orders, parquet_path, mode="overwrite", partition_by="status")
 
     partition_counts = (
-        spark.read.parquet(str(parquet_path))
+        read_parquet(spark, parquet_path)
         .groupBy("status")
         .count()
         .orderBy("status")

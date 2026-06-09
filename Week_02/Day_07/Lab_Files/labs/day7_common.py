@@ -1,9 +1,23 @@
 from __future__ import annotations
 
 import csv
+from datetime import date, datetime
 import json
 import shutil
+import sys
 from pathlib import Path
+import types
+import typing
+from uuid import uuid4
+
+# PySpark 3.4 imports typing.io, which is no longer a real module in
+# Python 3.14. Keep the Day 7 local notebooks/scripts usable there.
+if "typing.io" not in sys.modules:
+    typing_io = types.ModuleType("typing.io")
+    typing_io.IO = typing.IO
+    typing_io.TextIO = typing.TextIO
+    typing_io.BinaryIO = typing.BinaryIO
+    sys.modules["typing.io"] = typing_io
 
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
@@ -75,6 +89,10 @@ def spark_session(app_name: str) -> SparkSession:
         SparkSession.builder.appName(app_name)
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.shuffle.partitions", "4")
+        .config("spark.driver.memory", "512m")
+        .config("spark.executor.memory", "512m")
+        .config("spark.memory.fraction", "0.6")
+        .config("spark.driver.maxResultSize", "256m")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
@@ -155,13 +173,132 @@ def with_bronze_metadata(df: DataFrame, batch_id: str) -> DataFrame:
     )
 
 
+def is_local_windows_hadoop_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "winutils.exe" in message or "HADOOP_HOME" in message or "hadoop.home.dir" in message
+
+
+def json_safe(value: object) -> object:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    return value
+
+
+def safe_partition_value(value: object) -> str:
+    if value is None:
+        return "__HIVE_DEFAULT_PARTITION__"
+    return str(value).replace("\\", "_").replace("/", "_").replace(":", "_")
+
+
+def partition_columns(partition_by: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if partition_by is None:
+        return []
+    if isinstance(partition_by, str):
+        return [partition_by]
+    return list(partition_by)
+
+
+def write_parquet(
+    df: DataFrame,
+    path: Path,
+    mode: str = "overwrite",
+    partition_by: str | list[str] | tuple[str, ...] | None = None,
+) -> None:
+    columns = partition_columns(partition_by)
+    try:
+        writer = df.write.mode(mode)
+        if columns:
+            writer = writer.partitionBy(*columns)
+        writer.parquet(str(path))
+    except Exception as exc:
+        if not is_local_windows_hadoop_error(exc):
+            raise
+
+        if mode == "overwrite":
+            reset_dir(path)
+        else:
+            path.mkdir(parents=True, exist_ok=True)
+
+        grouped: dict[Path, list[dict[str, object]]] = {}
+        for row in df.collect():
+            record = {key: json_safe(value) for key, value in row.asDict(recursive=True).items()}
+            output_dir = path
+            for column in columns:
+                output_dir = output_dir / f"{column}={safe_partition_value(record.get(column))}"
+            grouped.setdefault(output_dir, []).append(record)
+
+        for output_dir, records in grouped.items():
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_file = output_dir / f"part-{uuid4().hex}.jsonl"
+            with output_file.open("w", encoding="utf-8") as handle:
+                for record in records:
+                    handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+        (path / "_DAY7_LOCAL_JSON_FALLBACK").write_text(
+            "Spark Parquet write fell back to JSON because local Windows Hadoop winutils.exe is missing.\n",
+            encoding="utf-8",
+        )
+        (path / "_SUCCESS").write_text("", encoding="utf-8")
+
+
+def read_parquet(spark: SparkSession, path: Path) -> DataFrame:
+    if (path / "_DAY7_LOCAL_JSON_FALLBACK").exists():
+        json_files = [str(item) for item in path.rglob("part-*.jsonl")]
+        if not json_files:
+            raise FileNotFoundError(f"No fallback JSON files found under {path}")
+        return spark.read.json(json_files)
+    return spark.read.parquet(str(path))
+
+
+def schema_profile(df: DataFrame) -> DataFrame:
+    metrics = df.agg(
+        F.count(F.lit(1)).alias("__total_rows"),
+        *[
+            F.count(F.col(field.name)).alias(f"__non_null_{index}")
+            for index, field in enumerate(df.schema.fields)
+        ],
+    )
+
+    frames = [
+        metrics.select(
+            F.lit(field.name).alias("column_name"),
+            F.lit(field.dataType.simpleString()).alias("data_type"),
+            F.col(f"__non_null_{index}").cast("long").alias("non_null_rows"),
+            (F.col("__total_rows") - F.col(f"__non_null_{index}")).cast("long").alias("null_rows"),
+        )
+        for index, field in enumerate(df.schema.fields)
+    ]
+    profile = frames[0]
+    for frame in frames[1:]:
+        profile = profile.unionByName(frame)
+    return profile.orderBy("column_name")
+
+
+def metric_table(spark: SparkSession, rows: list[tuple[str, int]]) -> DataFrame:
+    base = spark.range(1).select()
+    frames = [
+        base.select(
+            F.lit(metric).alias("metric"),
+            F.lit(int(value)).cast("long").alias("value"),
+        )
+        for metric, value in rows
+    ]
+    table = frames[0]
+    for frame in frames[1:]:
+        table = table.unionByName(frame)
+    return table
+
+
 def write_csv_dir(df: DataFrame, path: Path, mode: str = "overwrite") -> None:
     reset_dir(path) if mode == "overwrite" else path.mkdir(parents=True, exist_ok=True)
     try:
         df.coalesce(1).write.mode(mode).option("header", "true").csv(str(path))
     except Exception as exc:
-        message = str(exc)
-        if "winutils.exe" not in message and "HADOOP_HOME" not in message and "hadoop.home.dir" not in message:
+        if not is_local_windows_hadoop_error(exc):
             raise
 
         # Local Windows notebooks may not have Hadoop winutils.exe installed.
@@ -184,7 +321,7 @@ def write_json_report(path: Path, payload: dict[str, object]) -> None:
 
 def read_bronze_orders(spark: SparkSession, base_path: Path | None = None) -> DataFrame:
     path = base_path or LAKE_DIR / "bronze" / "orders_raw"
-    return spark.read.parquet(str(path))
+    return read_parquet(spark, path)
 
 
 def cleaned_orders(df: DataFrame) -> DataFrame:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from day7_common import LAKE_DIR, gold_frames, ensure_output_dirs, require_source_data, spark_session, write_csv_dir
+from day7_common import LAKE_DIR, gold_frames, ensure_output_dirs, require_source_data, spark_session, write_csv_dir, read_parquet, write_parquet
 
 
 def main() -> None:
@@ -8,12 +8,12 @@ def main() -> None:
     ensure_output_dirs()
     spark = spark_session("Day7Lab10GoldKpis")
 
-    enriched = spark.read.parquet(str(LAKE_DIR / "silver" / "orders_enriched"))
+    enriched = read_parquet(spark, LAKE_DIR / "silver" / "orders_enriched")
     frames = gold_frames(enriched)
     gold_path = LAKE_DIR / "gold"
 
     for name, frame in frames.items():
-        frame.write.mode("overwrite").parquet(str(gold_path / name))
+        write_parquet(frame, gold_path / name, mode="overwrite")
         write_csv_dir(frame, gold_path / f"{name}_csv")
 
     print("LAB 10 COMPLETE")

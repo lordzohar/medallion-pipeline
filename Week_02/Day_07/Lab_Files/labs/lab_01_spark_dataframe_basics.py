@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pyspark.sql import functions as F
-
 from day7_common import OUTPUT_DIR, ensure_output_dirs, read_customers, require_source_data, spark_session, write_csv_dir
+
+from pyspark.sql import functions as F
 
 
 def main() -> None:
