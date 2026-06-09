@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 from pathlib import Path
@@ -156,7 +157,24 @@ def with_bronze_metadata(df: DataFrame, batch_id: str) -> DataFrame:
 
 def write_csv_dir(df: DataFrame, path: Path, mode: str = "overwrite") -> None:
     reset_dir(path) if mode == "overwrite" else path.mkdir(parents=True, exist_ok=True)
-    df.coalesce(1).write.mode(mode).option("header", "true").csv(str(path))
+    try:
+        df.coalesce(1).write.mode(mode).option("header", "true").csv(str(path))
+    except Exception as exc:
+        message = str(exc)
+        if "winutils.exe" not in message and "HADOOP_HOME" not in message and "hadoop.home.dir" not in message:
+            raise
+
+        # Local Windows notebooks may not have Hadoop winutils.exe installed.
+        # The lab CSV outputs are small inspection artifacts, so write them
+        # directly with Python while keeping Spark writes for normal environments.
+        reset_dir(path)
+        output_file = path / "part-00000.csv"
+        with output_file.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(df.columns)
+            for row in df.collect():
+                writer.writerow([row[column] for column in df.columns])
+        (path / "_SUCCESS").write_text("", encoding="utf-8")
 
 
 def write_json_report(path: Path, payload: dict[str, object]) -> None:

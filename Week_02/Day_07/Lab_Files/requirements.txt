@@ -1,0 +1,12 @@
+# Day 07 local Python dependencies.
+# Install from Week_02/Day_07/Lab_Files with:
+#   python -m pip install -r requirements.txt
+#
+# The Docker lab runner uses the apache/spark-py:v3.4.0 image, which already
+# includes Spark. These packages are for local IDE analysis and notebooks.
+
+pyspark==3.4.0
+jupyterlab>=4.0.0
+notebook>=7.0.0
+ipykernel>=6.0.0
+jupyter>=1.1.0

@@ -1,7 +1,6 @@
 services:
   spark-master:
     image: apache/spark-py:v3.4.0
-    container_name: day7-spark-master
     user: "0:0"
     command:
       [
@@ -24,7 +23,6 @@ services:
 
   spark-worker:
     image: apache/spark-py:v3.4.0
-    container_name: day7-spark-worker
     user: "0:0"
     depends_on:
       - spark-master
@@ -48,7 +46,6 @@ services:
 
   spark-client:
     image: apache/spark-py:v3.4.0
-    container_name: day7-spark-client
     user: "0:0"
     depends_on:
       - spark-master
@@ -62,7 +59,6 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: day7-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -94,7 +90,6 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: day7-zookeeper
     profiles:
       - streaming
     environment:
@@ -106,7 +101,6 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: day7-kafka
     profiles:
       - streaming
     depends_on:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "labs"))
 
-from lab_12_full_medallion_pipeline import main
+from labs.lab_12_full_medallion_pipeline import main
 
 
 if __name__ == "__main__":

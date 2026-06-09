@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "labs"))
 
-from lab_06_silver_cleaning_and_standardization import main
+from labs.lab_06_silver_cleaning_and_standardization import main
 
 
 if __name__ == "__main__":
