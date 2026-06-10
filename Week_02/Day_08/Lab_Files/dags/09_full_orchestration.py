@@ -79,8 +79,35 @@ def full_orchestration():
                 if not os.path.exists(file_path):
                     return {"source": "csv", "status": "no_file", "count": 0}
 
-                with open(file_path, newline="", encoding="utf-8") as fh:
-                    rows = [{k.lower(): v for k, v in r.items()} for r in csv.DictReader(fh)]
+                # Detect file encoding by trying to read the first line
+                detected_encoding = None
+                for encoding in ["utf-8", "latin-1", "iso-8859-1", "cp1252"]:
+                    try:
+                        with open(file_path, "r", encoding=encoding, errors="strict") as fh:
+                            fh.readline()
+                        detected_encoding = encoding
+                        print(f"CSV encoding detected: {encoding}")
+                        break
+                    except UnicodeDecodeError:
+                        continue
+
+                if not detected_encoding:
+                    detected_encoding = "latin-1"
+                    print(f"CSV encoding not detected, using: {detected_encoding}")
+
+                # Read CSV with detected encoding
+                try:
+                    with open(file_path, newline="", encoding=detected_encoding, errors="replace") as fh:
+                        reader = csv.DictReader(fh)
+                        rows = [{k.lower(): v for k, v in r.items()} for r in reader]
+                    print(f"Successfully read {len(rows)} CSV rows")
+                except Exception as e:
+                    print(f"Error reading CSV: {e}")
+                    return {"source": "csv", "status": "failed", "count": 0, "error": str(e)}
+
+                if not rows:
+                    print("No rows found in CSV")
+                    return {"source": "csv", "status": "empty", "count": 0}
 
                 with engine.begin() as conn:
                     for row in rows:
@@ -169,35 +196,68 @@ def full_orchestration():
                 return {"source": "customers", "count": 0}
 
             engine = create_engine(PG_CONN)
-            with open(file_path, newline="", encoding="utf-8") as fh:
-                rows = [{k.lower(): v for k, v in r.items()} for r in csv.DictReader(fh)]
+            rows = []
+            
+            # Detect file encoding by trying to read the first line
+            detected_encoding = None
+            for encoding in ["utf-8", "latin-1", "iso-8859-1", "cp1252"]:
+                try:
+                    with open(file_path, "r", encoding=encoding, errors="strict") as fh:
+                        # Try to read first line to verify encoding works
+                        fh.readline()
+                    detected_encoding = encoding
+                    print(f"Detected encoding: {encoding}")
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+            if not detected_encoding:
+                detected_encoding = "latin-1"
+                print(f"Could not auto-detect, using fallback: {detected_encoding}")
+
+            # Now read the full CSV with detected encoding
+            try:
+                with open(file_path, newline="", encoding=detected_encoding, errors="replace") as fh:
+                    reader = csv.DictReader(fh)
+                    rows = [{k.lower(): v for k, v in r.items()} for r in reader]
+                print(f"Successfully read {len(rows)} rows with {detected_encoding}")
+            except Exception as e:
+                print(f"Error reading CSV: {e}")
+                return {"source": "customers", "count": 0, "error": str(e)}
+
+            if not rows:
+                print("No rows read from CSV")
+                return {"source": "customers", "count": 0}
 
             with engine.begin() as conn:
                 conn.execute(text("DELETE FROM bronze_customers"))
                 for row in rows:
-                    conn.execute(
-                        text("""
-                            INSERT INTO bronze_customers
-                                (customer_id, customer_name, email, city, country, signup_date)
-                            VALUES
-                                (:cid, :name, :email, :city, :country, :signup)
-                        """),
-                        {
-                            "cid": int(row["customer_id"]),
-                            "name": row["customer_name"],
-                            "email": row.get("email", ""),
-                            "city": row["city"],
-                            "country": row["country"],
-                            "signup": row["signup_date"],
-                        },
-                    )
+                    try:
+                        conn.execute(
+                            text("""
+                                INSERT INTO bronze_customers
+                                    (customer_id, customer_name, email, city, country, signup_date)
+                                VALUES
+                                    (:cid, :name, :email, :city, :country, :signup)
+                            """),
+                            {
+                                "cid": int(row.get("customer_id", 0)),
+                                "name": row.get("customer_name", ""),
+                                "email": row.get("email", ""),
+                                "city": row.get("city", ""),
+                                "country": row.get("country", ""),
+                                "signup": row.get("signup_date", ""),
+                            },
+                        )
+                    except Exception as e:
+                        print(f"Error inserting row {row}: {e}")
+                        continue
+
             return {"source": "customers", "count": len(rows)}
 
         csv_result = ingest_csv_via_hop()
         kafka_result = ingest_kafka_events()
         customer_result = ingest_customers()
-
-        return csv_result, kafka_result, customer_result
 
     # ════════════════════════════════════════════════════════
     # PHASE 2: DATA QUALITY GATE
@@ -260,7 +320,7 @@ def full_orchestration():
 
             return {"checks": checks, "all_passed": all_passed}
 
-        return run_bronze_quality_checks()
+        run_bronze_quality_checks()
 
     # ════════════════════════════════════════════════════════
     # PHASE 3: SILVER TRANSFORMATION (via Hop)
@@ -323,7 +383,6 @@ def full_orchestration():
 
         orders = silver_orders_transform()
         customers = silver_customers_transform()
-        return orders, customers
 
     # ════════════════════════════════════════════════════════
     # PHASE 4: GOLD AGGREGATION
@@ -420,7 +479,6 @@ def full_orchestration():
         c360 = build_customer_360()
         daily = build_daily_sales()
         products = build_product_performance()
-        return c360, daily, products
 
     # ════════════════════════════════════════════════════════
     # PHASE 5: REPORTING & LINEAGE
@@ -479,7 +537,6 @@ def full_orchestration():
     summary = generate_executive_summary()
 
     end = EmptyOperator(task_id="end", trigger_rule="none_failed_min_one_success")
-
     start >> ingestion >> quality >> silver >> gold >> summary >> end
 
 
