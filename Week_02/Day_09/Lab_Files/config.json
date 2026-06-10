@@ -1,0 +1,30 @@
+{
+  "zones": [
+    {"name": "TIMES_SQUARE", "lat": 40.7580, "lon": -73.9855, "base_demand": 0.95, "surge_prob": 0.30},
+    {"name": "MIDTOWN",      "lat": 40.7549, "lon": -73.9840, "base_demand": 0.85, "surge_prob": 0.20},
+    {"name": "WALL_STREET",  "lat": 40.7074, "lon": -74.0113, "base_demand": 0.70, "surge_prob": 0.15},
+    {"name": "JFK_AIRPORT",  "lat": 40.6413, "lon": -73.7781, "base_demand": 0.60, "surge_prob": 0.40},
+    {"name": "BROOKLYN",     "lat": 40.6782, "lon": -73.9442, "base_demand": 0.50, "surge_prob": 0.10},
+    {"name": "HARLEM",       "lat": 40.8116, "lon": -73.9465, "base_demand": 0.40, "surge_prob": 0.05}
+  ],
+  "payment_types": ["credit_card", "cash", "mobile", "corporate"],
+  "fare": {
+    "base":        2.55,
+    "per_mile":    1.75,
+    "per_minute":  0.35,
+    "max_tip_pct": 0.25
+  },
+  "quality": {
+    "fare_min": 0,
+    "fare_max": 1000,
+    "distance_min": 0.0,
+    "distance_max": 150,
+    "passenger_min": 1,
+    "passenger_max": 8,
+    "lat_min": 40.4,
+    "lat_max": 41.0,
+    "lon_min": -74.3,
+    "lon_max": -73.5
+  },
+  "corruption_rate": 0.015
+}

@@ -1,0 +1,33 @@
+lowercaseOutputName: true
+rules:
+  # MessagesInPerSec, BytesInPerSec etc.
+  - pattern: kafka.server<type=(.+), name=(.+)PerSec\w*, topic=(.+)><>Count
+    name: kafka_server_$1_$2_total
+    labels:
+      topic: "$3"
+    type: COUNTER
+
+  - pattern: kafka.server<type=(.+), name=(.+)PerSec\w*><>Count
+    name: kafka_server_$1_$2_total
+    type: COUNTER
+
+  # Replica/partition health
+  - pattern: kafka.server<type=ReplicaManager, name=(.+)><>Value
+    name: kafka_server_replicamanager_$1
+    type: GAUGE
+
+  - pattern: kafka.controller<type=KafkaController, name=(.+)><>Value
+    name: kafka_controller_$1
+    type: GAUGE
+
+  # Request handler pool
+  - pattern: kafka.network<type=RequestMetrics, name=(.+), request=(.+)><>(Count|Mean|99thPercentile)
+    name: kafka_network_requestmetrics_$1_$3
+    labels:
+      request: "$2"
+    type: GAUGE
+
+  # Catch-all
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>(Count|Value|Mean)
+    name: kafka_$1_$2_$3_$4
+    type: GAUGE

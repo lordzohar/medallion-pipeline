@@ -1,0 +1,25 @@
+{
+  "name": "drivers-postgres-source",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "taxi",
+    "database.password": "taxi",
+    "database.dbname": "taxi",
+    "topic.prefix": "cdc",
+    "schema.include.list": "public",
+    "table.include.list": "public.drivers",
+    "plugin.name": "pgoutput",
+    "publication.autocreate.mode": "filtered",
+    "snapshot.mode": "initial",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false"
+  }
+}

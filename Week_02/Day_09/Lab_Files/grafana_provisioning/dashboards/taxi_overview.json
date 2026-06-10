@@ -1,0 +1,139 @@
+{
+  "title": "Taxi Pipeline — Live Overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Trips/sec (consumed)",
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(taxi_trips_consumed_total[1m]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "GPS pings/sec",
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "sum(rate(taxi_gps_pings_total[1m]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Data Quality Score (%)",
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [
+        {"color": "red", "value": 0},
+        {"color": "yellow", "value": 80},
+        {"color": "green", "value": 95}
+      ]}}},
+      "targets": [{"expr": "data_quality_score", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Revenue $/min",
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "sum(rate(taxi_revenue_dollars_total[1m])) * 60", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Trips by Zone (per second)",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5},
+      "targets": [{"expr": "sum by (zone) (rate(taxi_trips_consumed_total[1m]))", "legendFormat": "{{zone}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Surge Multiplier by Zone",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5},
+      "targets": [{"expr": "surge_multiplier", "legendFormat": "{{zone}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer Group Lag (per topic)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "targets": [{"expr": "sum by (topic, group) (kafka_consumergroup_group_lag)", "legendFormat": "{{group}}/{{topic}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "DLQ / Invalid Trips per minute",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "targets": [{"expr": "sum by (reason) (rate(taxi_trips_invalid_total[1m])) * 60", "legendFormat": "{{reason}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka Broker Bytes In/sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "targets": [{"expr": "sum(rate(kafka_server_brokertopicmetrics_bytesin_total[1m])) by (instance)", "legendFormat": "{{instance}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Driver State Distribution",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "targets": [{"expr": "taxi_active_drivers", "legendFormat": "{{state}}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "DLQ Records Total",
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 30},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [
+        {"color": "green", "value": 0},
+        {"color": "yellow", "value": 50},
+        {"color": "red", "value": 200}
+      ]}}},
+      "targets": [{"expr": "sum(taxi_trips_invalid_total)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "DLQ Rate (per min)",
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 30},
+      "targets": [{"expr": "sum(rate(taxi_trips_invalid_total[1m])) * 60", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "GE Expectations Passed",
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 30},
+      "targets": [{"expr": "sum(gx_expectations_passed_total)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "GE Expectations Failed",
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 30},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [
+        {"color": "green", "value": 0},
+        {"color": "yellow", "value": 10},
+        {"color": "red", "value": 100}
+      ]}}},
+      "targets": [{"expr": "sum(gx_expectations_failed_total)", "refId": "A"}]
+    },
+    {
+      "type": "barchart",
+      "title": "DLQ Reasons (count by category)",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 35},
+      "targets": [{"expr": "sum by (reason) (taxi_trips_invalid_total)", "legendFormat": "{{reason}}", "refId": "A"}]
+    },
+    {
+      "type": "barchart",
+      "title": "Great Expectations — failures by rule",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 35},
+      "targets": [{"expr": "sum by (expectation) (gx_expectations_failed_total)", "legendFormat": "{{expectation}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Producer Ack Latency (p50/p95/p99)",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 44},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(taxi_produce_latency_seconds_bucket[1m])) by (le))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum(rate(taxi_produce_latency_seconds_bucket[1m])) by (le))", "legendFormat": "p95", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum(rate(taxi_produce_latency_seconds_bucket[1m])) by (le))", "legendFormat": "p99", "refId": "C"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Zone demand vs supply (live)",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 44},
+      "targets": [
+        {"expr": "zone_demand_trips_per_min", "legendFormat": "demand {{zone}}", "refId": "A"},
+        {"expr": "zone_supply_idle_drivers", "legendFormat": "supply {{zone}}", "refId": "B"}
+      ]
+    }
+  ]
+}

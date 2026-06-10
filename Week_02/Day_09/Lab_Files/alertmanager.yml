@@ -1,0 +1,12 @@
+route:
+  receiver: 'default'
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://taxi-dashboard:5000/alert'
+        send_resolved: true

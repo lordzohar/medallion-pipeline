@@ -1,0 +1,9 @@
+confluent-kafka==2.4.0
+prometheus-client==0.20.0
+flask==3.0.3
+flask-socketio==5.3.6
+python-socketio==5.11.2
+great-expectations==0.18.15
+pandas==2.2.2
+psycopg2-binary==2.9.9
+requests==2.32.3
