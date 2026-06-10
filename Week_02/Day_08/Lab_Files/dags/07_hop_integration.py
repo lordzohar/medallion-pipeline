@@ -176,12 +176,12 @@ def hop_integration():
                 echo "  3. gold_aggregation.hpl    → Build aggregates"
                 echo ""
                 echo "Command would be:"
-                echo "  docker exec day8-hop-cli /opt/hop/hop-run.sh \\"
-                echo "    --file /project/workflows/day8_medallion_batch.hwf \\"
-                echo "    --project day8_airflow_hop \\"
+                echo "  docker exec day8-hop-cli /opt/hop/hop-run.sh \\\\"
+                echo "    --file /project/workflows/day8_medallion_batch.hwf \\\\"
+                echo "    --project day8_airflow_hop \\\\"
                 echo "    --runconfig local"
                 echo ""
-                echo "Status: SIMULATED (open Hop Web UI at http://localhost:8082 to run)"
+                echo "Status: SIMULATED - open Hop Web UI at http://localhost:8082 to run"
             """,
         )
 
