@@ -1,17 +1,23 @@
 """
 quality_validator.py
 ====================
-Runs Great Expectations against micro-batches read from `trips-clean`.
+Streaming data-quality validator.
 
-Why this script exists:
-  * Demonstrates ALL the same expectation types used in batch analytics
-    but on a streaming source (mini-batches of 25 records).
-  * Bounds and rule definitions are loaded from config.json so changing
-    a threshold needs zero code edits.
-  * Failures route to `trips-dlq` with the expectation name preserved
-    so the DLQ tool can show *why* each record was rejected.
+Reads micro-batches from `trips-clean`, runs a fixed suite of
+expectations against each batch, increments per-rule Prometheus
+counters, and routes any failing row into `trips-dlq` with the
+expectation name preserved in `_dlq_reason`.
 
-Quality rules (read from config.json -> "quality" block):
+The expectation API is deliberately tiny (~30 lines) so students can
+read it end-to-end. It mirrors what Great Expectations / Soda / Deequ
+do conceptually:
+
+    Expectation(name, predicate(row) -> bool)
+
+All bounds are pulled from config.json -> "quality" block so changing
+a threshold needs zero code edits.
+
+Quality rules:
   | column          | rule                       | bounds                 |
   | --------------- | -------------------------- | ---------------------- |
   | trip_id         | not null                   | -                      |
@@ -29,9 +35,9 @@ import argparse
 import json
 import logging
 import signal
+from dataclasses import dataclass
+from typing import Callable
 
-import great_expectations as gx
-import pandas as pd
 from confluent_kafka import Consumer, Producer
 from prometheus_client import Counter, Gauge, start_http_server
 
@@ -53,35 +59,63 @@ RECORDS = Counter("gx_records_validated_total", "Records validated")
 
 
 # ---------------------------------------------------------------------------
-# Build the expectation suite by RUNNING each expectation on the dataset.
-# This is the simple, stable GX 0.18 PandasDataset API.
-# ---------------------------------------------------------------------------
-def validate_batch(df: pd.DataFrame) -> list[tuple[str, bool, list]]:
-    """Return list of (expectation_name, success, unexpected_values_sample)."""
-    ds = gx.from_pandas(df)
-    checks = []
+@dataclass
+class Expectation:
+    name: str
+    predicate: Callable[[dict], bool]
 
-    def _record(name, result):
-        success = bool(result.success)
-        unexpected = result.result.get("partial_unexpected_list", [])[:5] if not success else []
-        checks.append((name, success, unexpected))
 
-    _record("trip_id_not_null",        ds.expect_column_values_to_not_be_null("trip_id"))
-    _record("driver_id_not_null",      ds.expect_column_values_to_not_be_null("driver_id"))
-    _record("fare_amount_in_range",    ds.expect_column_values_to_be_between(
-        "fare_amount", min_value=QUALITY["fare_min"], max_value=QUALITY["fare_max"]))
-    _record("distance_in_range",       ds.expect_column_values_to_be_between(
-        "distance_miles", min_value=QUALITY["distance_min"], max_value=QUALITY["distance_max"]))
-    _record("passengers_in_range",     ds.expect_column_values_to_be_between(
-        "passenger_count", min_value=QUALITY["passenger_min"], max_value=QUALITY["passenger_max"]))
-    _record("payment_type_in_set",     ds.expect_column_values_to_be_in_set(
-        "payment_type", value_set=PAYMENT_TYPES))
-    _record("pickup_lat_in_nyc",       ds.expect_column_values_to_be_between(
-        "pickup_lat", min_value=QUALITY["lat_min"], max_value=QUALITY["lat_max"]))
-    _record("pickup_lon_in_nyc",       ds.expect_column_values_to_be_between(
-        "pickup_lon", min_value=QUALITY["lon_min"], max_value=QUALITY["lon_max"]))
+def _not_null(col: str) -> Callable[[dict], bool]:
+    return lambda r: r.get(col) not in (None, "")
 
-    return checks
+
+def _between(col: str, lo: float, hi: float) -> Callable[[dict], bool]:
+    def _check(r: dict) -> bool:
+        v = r.get(col)
+        try:
+            return v is not None and lo <= float(v) <= hi
+        except (TypeError, ValueError):
+            return False
+    return _check
+
+
+def _in_set(col: str, allowed: set) -> Callable[[dict], bool]:
+    return lambda r: r.get(col) in allowed
+
+
+SUITE: list[Expectation] = [
+    Expectation("trip_id_not_null",     _not_null("trip_id")),
+    Expectation("driver_id_not_null",   _not_null("driver_id")),
+    Expectation("fare_amount_in_range", _between("fare_amount",
+                                                 QUALITY["fare_min"], QUALITY["fare_max"])),
+    Expectation("distance_in_range",    _between("distance_miles",
+                                                 QUALITY["distance_min"], QUALITY["distance_max"])),
+    Expectation("passengers_in_range",  _between("passenger_count",
+                                                 QUALITY["passenger_min"], QUALITY["passenger_max"])),
+    Expectation("payment_type_in_set",  _in_set("payment_type", set(PAYMENT_TYPES))),
+    Expectation("pickup_lat_in_nyc",    _between("pickup_lat",
+                                                 QUALITY["lat_min"], QUALITY["lat_max"])),
+    Expectation("pickup_lon_in_nyc",    _between("pickup_lon",
+                                                 QUALITY["lon_min"], QUALITY["lon_max"])),
+]
+
+
+def validate_batch(batch: list[dict]) -> tuple[int, int, dict[str, list[dict]]]:
+    """Return (passed_count, failed_count, failures_by_rule)."""
+    passed = 0
+    failed = 0
+    failures: dict[str, list[dict]] = {}
+    for row in batch:
+        row_ok = True
+        for exp in SUITE:
+            if not exp.predicate(row):
+                failures.setdefault(exp.name, []).append(row)
+                row_ok = False
+        if row_ok:
+            passed += 1
+        else:
+            failed += 1
+    return passed, failed, failures
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +134,7 @@ def run(batch_size: int):
     signal.signal(signal.SIGINT,  lambda *_: stop.update(f=True))
     signal.signal(signal.SIGTERM, lambda *_: stop.update(f=True))
 
-    log.info("GX validator running. batch_size=%d", batch_size)
+    log.info("validator running. batch_size=%d  suite_size=%d", batch_size, len(SUITE))
     while not stop["f"]:
         msg = consumer.poll(1.0)
         if msg and not msg.error():
@@ -110,30 +144,43 @@ def run(batch_size: int):
                 log.warning("parse err: %s", e)
 
         if len(buffer) >= batch_size:
-            df = pd.DataFrame(buffer)
-            checks = validate_batch(df)
-            RECORDS.inc(len(df))
+            RECORDS.inc(len(buffer))
 
-            passed = 0
-            for name, success, unexpected in checks:
-                if success:
-                    PASSED.labels(expectation=name).inc()
-                    passed += 1
-                else:
-                    FAILED.labels(expectation=name).inc()
-                    log.warning("FAIL %-30s sample=%s", name, unexpected)
-                    # Route the offending rows to DLQ with rule name preserved
-                    for row in df.to_dict("records"):
-                        bad = {**row, "_dlq_reason": name}
-                        producer.produce(
-                            TOPIC_TRIPS_DLQ,
-                            key=str(row.get("trip_id", "x")).encode(),
-                            value=json.dumps(bad).encode(),
-                        )
+            # Count per-expectation pass/fail across the batch
+            rule_fail_counts: dict[str, int] = {e.name: 0 for e in SUITE}
+            for row in buffer:
+                for exp in SUITE:
+                    if not exp.predicate(row):
+                        rule_fail_counts[exp.name] += 1
 
-            score = 100.0 * passed / max(len(checks), 1)
+            for name, fails in rule_fail_counts.items():
+                passes = len(buffer) - fails
+                if passes > 0:
+                    PASSED.labels(expectation=name).inc(passes)
+                if fails > 0:
+                    FAILED.labels(expectation=name).inc(fails)
+
+            # Per-row failure handling -> DLQ
+            passed, failed, failures = validate_batch(buffer)
+            for rule, rows in failures.items():
+                for row in rows:
+                    bad = {**row, "_dlq_reason": rule}
+                    producer.produce(
+                        TOPIC_TRIPS_DLQ,
+                        key=str(row.get("trip_id", "x")).encode(),
+                        value=json.dumps(bad).encode(),
+                    )
+
+            total_checks = len(buffer) * len(SUITE)
+            total_passed = total_checks - sum(rule_fail_counts.values())
+            score = 100.0 * total_passed / max(total_checks, 1)
             QUALITY_SCORE.set(score)
-            log.info("batch=%d score=%.1f%% passed=%d/%d", len(df), score, passed, len(checks))
+            log.info("batch=%d rows passed=%d failed=%d score=%.1f%%",
+                     len(buffer), passed, failed, score)
+            if failed:
+                worst = sorted(rule_fail_counts.items(), key=lambda kv: -kv[1])[:3]
+                log.info("  top failing rules: %s", worst)
+
             producer.poll(0)
             buffer.clear()
 
@@ -147,6 +194,7 @@ def main():
     ap.add_argument("--metrics-port", type=int, default=8004)
     args = ap.parse_args()
     start_http_server(args.metrics_port)
+    log.info("prometheus metrics on :%d", args.metrics_port)
     run(args.batch_size)
 
 
