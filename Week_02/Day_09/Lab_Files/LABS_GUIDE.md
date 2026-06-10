@@ -2,7 +2,7 @@
 
 > **Pipeline Monitoring · Logging & Error Handling · Data Quality · Scaling**
 > Reference dataset: **NYC Uber-style taxi data** (lat/lon, fares, surge, payments, drivers from CDC)
-> Stack: **KRaft Kafka** (3 brokers) + Postgres + Debezium CDC + ksqlDB + Schema Registry + Prometheus + Grafana + Loki + Alertmanager + Kafka UI + Great Expectations
+> Stack: **KRaft Kafka** (3 brokers) + Postgres + Debezium CDC + ksqlDB + Schema Registry + Prometheus + Grafana + Loki + Alertmanager + Kafka UI + an expectation-based validator
 
 Each lab has: **Goal → Steps → What to observe → Discussion**.
 Plan ~20 minutes per lab over a 5-hour session.
@@ -21,7 +21,7 @@ Plan ~20 minutes per lab over a 5-hour session.
                                           │       │                                 │
                                           │       ▼                                 │
                                           │  surge_detector ─► surge-events         │
-                                          │  quality_validator (Great Expectations) │
+                                          │  quality_validator (expectation suite)  │
                                           ▼                                         ▼
                                       trips-dlq  ◄────────── dashboard.py ◄───────  │
                                                             (live map @ :5000)      │
@@ -229,7 +229,7 @@ python driver_enricher.py
 # Terminal 4 — windowed aggregation: surge multiplier per zone
 python surge_detector.py
 
-# Terminal 5 — Great Expectations on trips-clean
+# Terminal 5 — Expectation validator on trips-clean
 python quality_validator.py
 ```
 
@@ -273,7 +273,7 @@ Open http://localhost:5000.
 **What to observe:**
 - Trips/sec, GPS pings/sec, data quality, surge per zone — all live.
 - Each broker line under "Bytes In" — load should be balanced across kafka1/2/3.
-- Bottom panels: DLQ counts and Great Expectations failures by rule.
+- Bottom panels: DLQ counts and expectation failures by rule.
 
 **Discussion:**
 - Kafka brokers expose 1000+ JMX metrics. Why do we project only the patterns in `jmx_exporter/kafka.yml`?
@@ -410,9 +410,9 @@ Open http://localhost:5000.
 
 ---
 
-## Lab 10 — Great Expectations on a Streaming Pipeline
+## Lab 10 — Expectation-Based Validation on a Streaming Pipeline
 
-**Goal:** Use the same data-quality framework as batch analytics, but on micro-batches from Kafka.
+**Goal:** Apply the same kind of declarative data-quality rules you'd use in batch analytics (Great Expectations / Soda / Deequ style) to micro-batches off Kafka — using a tiny in-house validator so the mechanics are visible end-to-end.
 
 **Quality parameters in this lab** (all defined in [config.json](config.json) → `quality` block):
 
@@ -447,7 +447,8 @@ Open http://localhost:5000.
 - Changing a threshold needs **zero code edits** — only `config.json`.
 
 **Discussion:**
-- Streaming vs batch GE: what changes? (Here we use an ephemeral context + in-memory pandas; no checkpoint store.)
+- Streaming vs batch validation: what changes? (Here we validate micro-batches in memory; no checkpoint store, no validation history written back.)
+- Why an in-house validator instead of Great Expectations? GX adds a heavy dependency chain that doesn't always cleanly support newer Python interpreters. The 30-line `Expectation` API in [quality_validator.py](quality_validator.py) keeps the **idea** of declarative expectations without the install pain.
 - When would you reject the **whole batch** vs reject **individual rows**?
 
 ---
