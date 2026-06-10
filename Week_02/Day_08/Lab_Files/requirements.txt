@@ -5,4 +5,4 @@ apache-airflow-providers-http==4.6.0
 kafka-python-ng==2.2.2
 psycopg2-binary==2.9.9
 sqlalchemy==1.4.52
-pandas==2.1.4
+pandas==2.0.3
