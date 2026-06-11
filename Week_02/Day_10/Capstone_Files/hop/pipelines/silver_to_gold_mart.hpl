@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Wrapper that invokes silver_to_gold.py for one mart name. -->
+<pipeline>
+  <info>
+    <name>silver_to_gold_mart</name>
+    <description>Materialise one gold mart from silver Avro.</description>
+    <trans_version>2.0.0</trans_version>
+    <trans_type>Normal</trans_type>
+    <directory>/</directory>
+    <parameters>
+      <parameter>
+        <name>MART</name>
+        <default_value>seismic_24h_summary</default_value>
+        <description>aircraft_density_by_region | weather_snapshot | seismic_24h_summary | region_alert_correlation</description>
+      </parameter>
+    </parameters>
+  </info>
+
+  <order>
+    <hop><from>Start</from><to>RunPython_gold</to><enabled>Y</enabled></hop>
+    <hop><from>RunPython_gold</from><to>LogResult</to><enabled>Y</enabled></hop>
+  </order>
+
+  <transform>
+    <name>Start</name>
+    <type>RowGenerator</type>
+    <copies>1</copies>
+    <limit>1</limit>
+    <fields/>
+    <GUI><xloc>96</xloc><yloc>96</yloc></GUI>
+  </transform>
+
+  <transform>
+    <name>RunPython_gold</name>
+    <type>ExecProcess</type>
+    <description>python3 transforms/silver_to_gold.py --mart=${MART}</description>
+    <copies>1</copies>
+    <processfield>process</processfield>
+    <resultfieldname>stdout</resultfieldname>
+    <errorfieldname>stderr</errorfieldname>
+    <exitvaluefieldname>exit_code</exitvaluefieldname>
+    <failwhennotsuccess>Y</failwhennotsuccess>
+    <outputlinedelimiter>\n</outputlinedelimiter>
+    <GUI><xloc>320</xloc><yloc>96</yloc></GUI>
+  </transform>
+
+  <transform>
+    <name>LogResult</name>
+    <type>WriteToLog</type>
+    <copies>1</copies>
+    <loglevel>Basic</loglevel>
+    <displayHeader>Y</displayHeader>
+    <fields>
+      <field><name>exit_code</name></field>
+      <field><name>stdout</name></field>
+    </fields>
+    <GUI><xloc>560</xloc><yloc>96</yloc></GUI>
+  </transform>
+</pipeline>

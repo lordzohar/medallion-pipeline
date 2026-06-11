@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Day 10 — Business Dashboard</title>
+  <meta http-equiv="refresh" content="15">
+  <style>
+    body { font-family: -apple-system, Segoe UI, sans-serif; margin:0; background:#f8fafc; color:#0f172a; }
+    header { background:#0f172a; color:#f8fafc; padding:1rem 2rem; border-bottom:1px solid #334155; }
+    header h1 { margin:0; font-size:1.4rem; }
+    header small { color:#94a3b8; }
+    main { padding:1.5rem 2rem; display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:1rem 1.2rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+    .card h2 { margin-top:0; font-size:1.05rem; border-bottom:1px solid #e2e8f0; padding-bottom:.5rem; }
+    .kpi { display:flex; gap:1.2rem; }
+    .kpi div { flex:1; background:#f1f5f9; border-radius:6px; padding:.7rem; text-align:center; }
+    .kpi div b { display:block; font-size:1.5rem; color:#0ea5e9; }
+    table { width:100%; border-collapse:collapse; font-size:.85rem; }
+    th, td { padding:.4rem .55rem; border-bottom:1px solid #e2e8f0; text-align:left; }
+    th { color:#475569; font-weight:600; background:#f8fafc; }
+    .num { text-align:right; font-variant-numeric: tabular-nums; }
+    .empty { color:#94a3b8; font-style:italic; }
+    .grid-wide { grid-column:1 / span 2; }
+    .badge { background:#0ea5e9; color:#fff; border-radius:4px; padding:1px 6px; font-size:.75rem; }
+    .sev-critical { color:#dc2626; font-weight:600; }
+    .sev-warning  { color:#d97706; font-weight:600; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Business dashboard <span class="badge">Streams</span></h1>
+    <small>Cache loaded: {{ cache_at }} — auto-refresh 15s | sources: OGN aircraft · NOAA weather · EMSC seismic</small>
+  </header>
+  <main>
+
+    <section class="card">
+      <h2>Live KPIs (last 24h)</h2>
+      <div class="kpi">
+        <div><b>{{ aircraft|length }}</b><small>regions w/ traffic</small></div>
+        <div><b>{{ weather|length }}</b><small>weather stations</small></div>
+        <div><b>{{ seismic_total }}</b><small>seismic events</small></div>
+        <div><b>{{ correlation|length }}</b><small>regions w/ quakes</small></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Seismic 24h summary</h2>
+      {% if seismic %}
+      <table>
+        <thead><tr><th>Region</th><th>Mag bucket</th><th class="num">Events</th><th class="num">Max mag</th><th class="num">Avg depth</th></tr></thead>
+        <tbody>
+          {% for r in seismic %}
+          <tr>
+            <td>{{ r.region }}</td>
+            <td>{{ r.mag_bucket }}</td>
+            <td class="num">{{ r.events }}</td>
+            <td class="num">{{ '%.2f' % (r.max_mag or 0) }}</td>
+            <td class="num">{{ '%.1f' % (r.avg_depth_km or 0) }} km</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">Waiting for first gold refresh of seismic events…</p>{% endif %}
+    </section>
+
+    <section class="card grid-wide">
+      <h2>Aircraft density by region (last 1h)</h2>
+      {% if aircraft %}
+      <table>
+        <thead><tr><th>Region</th><th>Country</th><th>Kind</th><th class="num">Positions</th><th class="num">Unique a/c</th><th class="num">Avg alt</th><th class="num">Avg spd</th></tr></thead>
+        <tbody>
+          {% for r in aircraft %}
+          <tr>
+            <td>{{ r.region }}</td>
+            <td>{{ r.country }}</td>
+            <td>{{ r.kind }}</td>
+            <td class="num">{{ r.positions_last_1h }}</td>
+            <td class="num">{{ r.unique_aircraft }}</td>
+            <td class="num">{{ '%.0f' % (r.avg_altitude_m or 0) }} m</td>
+            <td class="num">{{ '%.0f' % (r.avg_speed_kmh or 0) }} km/h</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">No OGN aircraft in any region yet — feed warming up.</p>{% endif %}
+    </section>
+
+    <section class="card grid-wide">
+      <h2>Weather snapshot — latest per station</h2>
+      {% if weather %}
+      <table>
+        <thead><tr><th>Station</th><th>Region</th><th class="num">Temp °C</th><th class="num">Wind km/h</th><th class="num">Gust km/h</th><th class="num">Vis m</th><th class="num">Precip 1h mm</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for r in weather %}
+          <tr>
+            <td>{{ r.station_id }}</td>
+            <td>{{ r.region or '—' }}</td>
+            <td class="num">{{ '%.1f' % (r.temperature_c or 0) }}</td>
+            <td class="num">{{ '%.0f' % (r.wind_speed_kmh or 0) }}</td>
+            <td class="num">{{ '%.0f' % (r.wind_gust_kmh or 0) }}</td>
+            <td class="num">{{ '%.0f' % (r.visibility_m or 0) }}</td>
+            <td class="num">{{ '%.1f' % (r.precip_last_1h_mm or 0) }}</td>
+            <td>{{ r.text_description or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">No NOAA observations yet.</p>{% endif %}
+    </section>
+
+    <section class="card grid-wide">
+      <h2>Cross-stream: seismic events near subscribed regions</h2>
+      {% if correlation %}
+      <table>
+        <thead><tr><th>Region</th><th>Country</th><th class="num">Quakes 24h</th><th class="num">Max mag</th><th class="num">Avg mag</th><th class="num">Subscribers</th></tr></thead>
+        <tbody>
+          {% for r in correlation %}
+          <tr>
+            <td>{{ r.region }}</td>
+            <td>{{ r.country }}</td>
+            <td class="num">{{ r.quake_count_24h }}</td>
+            <td class="num {% if (r.max_magnitude or 0) >= 6.0 %}sev-critical{% elif (r.max_magnitude or 0) >= 5.0 %}sev-warning{% endif %}">{{ '%.2f' % (r.max_magnitude or 0) }}</td>
+            <td class="num">{{ '%.2f' % (r.avg_magnitude or 0) }}</td>
+            <td class="num">{{ r.subscribers_notified }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">No correlations yet.</p>{% endif %}
+    </section>
+
+  </main>
+</body>
+</html>

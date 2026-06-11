@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "namespace": "org.pipeline.noaa",
+  "name": "NoaaObservation",
+  "doc": "Latest observation from a NOAA weather station (api.weather.gov).",
+  "fields": [
+    { "name": "event_id",         "type": "string" },
+    { "name": "station_id",       "type": "string",                           "doc": "NWS station identifier, e.g. KJFK." },
+    { "name": "ts_ms",            "type": "long",                             "doc": "Observation timestamp (UTC, epoch ms)." },
+    { "name": "ingested_ms",      "type": "long" },
+    { "name": "lat",              "type": ["null", "double"], "default": null },
+    { "name": "lon",              "type": ["null", "double"], "default": null },
+    { "name": "elevation_m",      "type": ["null", "double"], "default": null },
+    { "name": "temperature_c",    "type": ["null", "double"], "default": null },
+    { "name": "dewpoint_c",       "type": ["null", "double"], "default": null },
+    { "name": "humidity_pct",     "type": ["null", "double"], "default": null },
+    { "name": "wind_speed_kmh",   "type": ["null", "double"], "default": null },
+    { "name": "wind_dir_deg",     "type": ["null", "double"], "default": null },
+    { "name": "wind_gust_kmh",    "type": ["null", "double"], "default": null },
+    { "name": "pressure_pa",      "type": ["null", "double"], "default": null },
+    { "name": "visibility_m",     "type": ["null", "double"], "default": null },
+    { "name": "precip_last_1h_mm","type": ["null", "double"], "default": null },
+    { "name": "text_description", "type": ["null", "string"], "default": null }
+  ]
+}

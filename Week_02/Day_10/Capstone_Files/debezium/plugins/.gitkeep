@@ -1,0 +1,2 @@
+# Kafka Connect plugins land here at bootstrap time via debezium/download_plugins.{ps1,sh}.
+# Tracked as an empty folder so the docker-compose bind-mount target exists.

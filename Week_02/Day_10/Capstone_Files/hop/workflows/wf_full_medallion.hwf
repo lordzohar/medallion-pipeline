@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Top-level workflow: bronze -> silver -> gold for every entity.
+  Calls the two child workflows below sequentially. Triggered by Airflow.
+-->
+<workflow>
+  <name>wf_full_medallion</name>
+  <description>End-to-end medallion refresh (bronze -&gt; silver -&gt; gold).</description>
+  <workflow_version>2.0.0</workflow_version>
+  <created_user>capstone</created_user>
+  <created_date>2026/06/11 00:00:00.000</created_date>
+
+  <actions>
+    <action>
+      <name>Start</name>
+      <type>SPECIAL</type>
+      <start>Y</start>
+      <parallel>N</parallel>
+      <xloc>96</xloc><yloc>96</yloc>
+    </action>
+    <action>
+      <name>wf_bronze_to_silver</name>
+      <type>WORKFLOW</type>
+      <description>Process all CDC tables + event topics.</description>
+      <filename>${PROJECT_HOME}/workflows/wf_bronze_to_silver.hwf</filename>
+      <run_configuration>local</run_configuration>
+      <xloc>320</xloc><yloc>96</yloc>
+    </action>
+    <action>
+      <name>wf_silver_to_gold</name>
+      <type>WORKFLOW</type>
+      <description>Refresh all gold marts.</description>
+      <filename>${PROJECT_HOME}/workflows/wf_silver_to_gold.hwf</filename>
+      <run_configuration>local</run_configuration>
+      <xloc>560</xloc><yloc>96</yloc>
+    </action>
+    <action>
+      <name>Success</name>
+      <type>SUCCESS</type>
+      <xloc>800</xloc><yloc>96</yloc>
+    </action>
+  </actions>
+
+  <hops>
+    <hop><from>Start</from><to>wf_bronze_to_silver</to><enabled>Y</enabled></hop>
+    <hop><from>wf_bronze_to_silver</from><to>wf_silver_to_gold</to><enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>wf_silver_to_gold</from><to>Success</to><enabled>Y</enabled><evaluation>Y</evaluation></hop>
+  </hops>
+</workflow>

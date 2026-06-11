@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "namespace": "org.pipeline.seismic",
+  "name": "SeismicEvent",
+  "doc": "Earthquake event from EMSC Seismic Portal real-time WebSocket.",
+  "fields": [
+    { "name": "event_id",      "type": "string",                           "doc": "EMSC unid." },
+    { "name": "action",        "type": "string",                           "doc": "create | update (from EMSC payload)." },
+    { "name": "ts_ms",         "type": "long",                             "doc": "Origin time, epoch ms UTC." },
+    { "name": "ingested_ms",   "type": "long" },
+    { "name": "lat",           "type": "double" },
+    { "name": "lon",           "type": "double" },
+    { "name": "depth_km",      "type": ["null", "double"], "default": null },
+    { "name": "magnitude",     "type": "double" },
+    { "name": "magnitude_type","type": ["null", "string"], "default": null },
+    { "name": "region",        "type": ["null", "string"], "default": null },
+    { "name": "source_id",     "type": ["null", "string"], "default": null },
+    { "name": "source_catalog","type": ["null", "string"], "default": null },
+    { "name": "auth",          "type": ["null", "string"], "default": null },
+    { "name": "evtype",        "type": ["null", "string"], "default": null,"doc": "ke=known event, se=suspected, ..." },
+    { "name": "lastupdate_ms", "type": ["null", "long"],   "default": null }
+  ]
+}

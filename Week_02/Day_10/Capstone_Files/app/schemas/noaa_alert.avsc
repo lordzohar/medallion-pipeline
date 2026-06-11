@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "namespace": "org.pipeline.noaa",
+  "name": "NoaaAlert",
+  "doc": "Active alert from api.weather.gov/alerts/active.",
+  "fields": [
+    { "name": "event_id",     "type": "string" },
+    { "name": "alert_id",     "type": "string",                           "doc": "NWS alert identifier." },
+    { "name": "ts_ms",        "type": "long",                             "doc": "Sent timestamp (UTC, epoch ms)." },
+    { "name": "ingested_ms",  "type": "long" },
+    { "name": "effective_ms", "type": ["null", "long"],   "default": null },
+    { "name": "expires_ms",   "type": ["null", "long"],   "default": null },
+    { "name": "event",        "type": "string",                           "doc": "e.g. 'Severe Thunderstorm Warning'." },
+    { "name": "severity",     "type": "string" },
+    { "name": "certainty",    "type": "string" },
+    { "name": "urgency",      "type": "string" },
+    { "name": "status",       "type": "string" },
+    { "name": "message_type", "type": "string" },
+    { "name": "category",     "type": "string" },
+    { "name": "headline",     "type": ["null", "string"], "default": null },
+    { "name": "area_desc",    "type": ["null", "string"], "default": null },
+    { "name": "sender",       "type": ["null", "string"], "default": null },
+    { "name": "states",       "type": ["null", "string"], "default": null, "doc": "Comma-separated state codes derived from geocode.SAME." }
+  ]
+}

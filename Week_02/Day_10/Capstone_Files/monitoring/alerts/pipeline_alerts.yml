@@ -1,0 +1,47 @@
+groups:
+  - name: pipeline
+    interval: 30s
+    rules:
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+        for: 2m
+        labels: { severity: critical, category: pipeline }
+        annotations:
+          summary: "Kafka has {{ $value }} under-replicated partitions"
+          description: "Broker is missing replicas. Check broker disk + network."
+
+      - alert: KafkaOfflinePartitions
+        expr: kafka_controller_kafkacontroller_offlinepartitionscount > 0
+        for: 2m
+        labels: { severity: critical, category: pipeline }
+        annotations:
+          summary: "Kafka has offline partitions ({{ $value }})"
+
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels: { severity: critical, category: pipeline }
+        annotations:
+          summary: "Postgres is unreachable"
+
+      - alert: MinIODown
+        expr: up{job="minio"} == 0
+        for: 1m
+        labels: { severity: critical, category: pipeline }
+        annotations:
+          summary: "MinIO unreachable — bronze/silver/gold writes will fail"
+
+      - alert: BusinessDashboardStale
+        expr: increase(business_dashboard_refresh_total[15m]) == 0
+        for: 15m
+        labels: { severity: warning, category: pipeline }
+        annotations:
+          summary: "Business dashboard has not refreshed in 15m"
+
+      - alert: IngestorContainerDown
+        expr: absent(up{job="business-dashboard"}) == 1
+        for: 5m
+        labels: { severity: warning, category: pipeline }
+        annotations:
+          summary: "Business dashboard scrape target missing"
+          description: "Prometheus has no recent scrape for business-dashboard:5002."

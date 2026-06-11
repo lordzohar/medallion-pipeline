@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Loops bronze_to_silver_streams.hpl over the 4 live-stream entities, then
+  bronze_to_silver_cdc.hpl over the 3 config tables. Straight-line for clarity;
+  in production the loop would use a "Pipeline executor" transform.
+-->
+<workflow>
+  <name>wf_bronze_to_silver</name>
+  <description>Run bronze-to-silver for every stream and CDC entity.</description>
+  <workflow_version>2.0.0</workflow_version>
+
+  <actions>
+    <action><name>Start</name><type>SPECIAL</type><start>Y</start><xloc>40</xloc><yloc>40</yloc></action>
+
+    <action><name>stream:ogn_positions</name>      <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_streams.hpl</filename><parameters><parameter><name>ENTITY</name><value>ogn_positions</value></parameter></parameters><xloc>200</xloc><yloc>40</yloc></action>
+    <action><name>stream:noaa_observations</name>  <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_streams.hpl</filename><parameters><parameter><name>ENTITY</name><value>noaa_observations</value></parameter></parameters><xloc>400</xloc><yloc>40</yloc></action>
+    <action><name>stream:noaa_alerts</name>        <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_streams.hpl</filename><parameters><parameter><name>ENTITY</name><value>noaa_alerts</value></parameter></parameters><xloc>600</xloc><yloc>40</yloc></action>
+    <action><name>stream:seismic_events</name>     <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_streams.hpl</filename><parameters><parameter><name>ENTITY</name><value>seismic_events</value></parameter></parameters><xloc>800</xloc><yloc>40</yloc></action>
+
+    <action><name>cdc:regions</name>              <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_cdc.hpl</filename><parameters><parameter><name>ENTITY</name><value>regions</value></parameter></parameters><xloc>200</xloc><yloc>200</yloc></action>
+    <action><name>cdc:alert_thresholds</name>     <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_cdc.hpl</filename><parameters><parameter><name>ENTITY</name><value>alert_thresholds</value></parameter></parameters><xloc>400</xloc><yloc>200</yloc></action>
+    <action><name>cdc:subscriber_watchlist</name> <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/bronze_to_silver_cdc.hpl</filename><parameters><parameter><name>ENTITY</name><value>subscriber_watchlist</value></parameter></parameters><xloc>600</xloc><yloc>200</yloc></action>
+
+    <action><name>Success</name><type>SUCCESS</type><xloc>800</xloc><yloc>200</yloc></action>
+  </actions>
+
+  <hops>
+    <hop><from>Start</from>                    <to>stream:ogn_positions</to>     <enabled>Y</enabled></hop>
+    <hop><from>stream:ogn_positions</from>     <to>stream:noaa_observations</to> <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>stream:noaa_observations</from> <to>stream:noaa_alerts</to>       <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>stream:noaa_alerts</from>       <to>stream:seismic_events</to>    <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>stream:seismic_events</from>    <to>cdc:regions</to>              <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>cdc:regions</from>              <to>cdc:alert_thresholds</to>     <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>cdc:alert_thresholds</from>     <to>cdc:subscriber_watchlist</to> <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>cdc:subscriber_watchlist</from> <to>Success</to>                  <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+  </hops>
+</workflow>

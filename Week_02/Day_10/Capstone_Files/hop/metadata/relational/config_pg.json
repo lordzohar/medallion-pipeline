@@ -1,0 +1,16 @@
+{
+  "name": "config_pg",
+  "pluginId": "POSTGRESQL",
+  "type": "POSTGRESQL",
+  "hostname": "config-db",
+  "port": "5432",
+  "databaseName": "config",
+  "username": "postgres",
+  "password": "Encrypted 2be98afc86aa7f2e4bb1a3b8dee8ed1d8",
+  "accessType": 0,
+  "attributes": {
+    "SUPPORTS_BOOLEAN_DATA_TYPE": "Y",
+    "QUOTE_ALL_FIELDS": "N",
+    "PREFERRED_SCHEMA_NAME": "public"
+  }
+}

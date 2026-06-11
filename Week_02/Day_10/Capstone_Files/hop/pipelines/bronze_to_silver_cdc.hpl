@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Apache Hop pipeline: bronze (Debezium CDC Avro on MinIO)
+                    -> silver (cleaned + deduped Avro on MinIO).
+
+  Drives one CDC entity at a time. The entity name is read from a pipeline
+  parameter ENTITY. To run all config tables in sequence, the parent
+  workflow wf_bronze_to_silver.hwf loops over them.
+
+  This file is intentionally compact: the heavy lifting is delegated to
+  the Python reference transform (transforms/bronze_to_silver.py) so the
+  same logic is testable from CLI. Open in Hop GUI to swap the "Execute
+  a process" transform for native "Avro File Input" + "Sort" + "Unique"
+  + "Avro File Output" steps once your MinIO VFS is configured.
+-->
+<pipeline>
+  <info>
+    <name>bronze_to_silver_cdc</name>
+    <description>Bronze CDC Avro -&gt; silver Avro for one config table.</description>
+    <extended_description>Parameter ENTITY selects the table (customers, orders, ...).</extended_description>
+    <trans_version>2.0.0</trans_version>
+    <trans_type>Normal</trans_type>
+    <directory>/</directory>
+    <created_user>capstone</created_user>
+    <created_date>2026/06/11 00:00:00.000</created_date>
+    <modified_user>capstone</modified_user>
+    <modified_date>2026/06/11 00:00:00.000</modified_date>
+    <parameters>
+      <parameter>
+        <name>ENTITY</name>
+        <default_value>regions</default_value>
+        <description>config table to process: regions | alert_thresholds | subscriber_watchlist</description>
+      </parameter>
+    </parameters>
+  </info>
+
+  <order>
+    <hop>
+      <from>Start</from>
+      <to>RunPython_bronze_to_silver</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>RunPython_bronze_to_silver</from>
+      <to>WriteAuditRow</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+
+  <transform>
+    <name>Start</name>
+    <type>RowGenerator</type>
+    <description>Single-row trigger for the pipeline.</description>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <interval_in_ms>0</interval_in_ms>
+    <row_time_field>now</row_time_field>
+    <last_time_field>last</last_time_field>
+    <never_ending>N</never_ending>
+    <limit>1</limit>
+    <fields/>
+    <attributes/>
+    <GUI><xloc>96</xloc><yloc>96</yloc></GUI>
+  </transform>
+
+  <transform>
+    <name>RunPython_bronze_to_silver</name>
+    <type>ExecProcess</type>
+    <description>Invokes transforms/bronze_to_silver.py --cdc=${ENTITY}</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <processfield>process</processfield>
+    <argumentFields>
+      <argumentField><argumentFieldName>arg1</argumentFieldName></argumentField>
+      <argumentField><argumentFieldName>arg2</argumentFieldName></argumentField>
+      <argumentField><argumentFieldName>arg3</argumentFieldName></argumentField>
+    </argumentFields>
+    <resultfieldname>stdout</resultfieldname>
+    <errorfieldname>stderr</errorfieldname>
+    <exitvaluefieldname>exit_code</exitvaluefieldname>
+    <failwhennotsuccess>Y</failwhennotsuccess>
+    <outputlinedelimiter>\n</outputlinedelimiter>
+    <attributes/>
+    <GUI><xloc>320</xloc><yloc>96</yloc></GUI>
+  </transform>
+
+  <transform>
+    <name>WriteAuditRow</name>
+    <type>WriteToLog</type>
+    <description>Logs the result of the python call.</description>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+    <loglevel>Basic</loglevel>
+    <displayHeader>Y</displayHeader>
+    <fields>
+      <field><name>exit_code</name></field>
+      <field><name>stdout</name></field>
+      <field><name>stderr</name></field>
+    </fields>
+    <attributes/>
+    <GUI><xloc>560</xloc><yloc>96</yloc></GUI>
+  </transform>
+
+  <pipeline-log-table>
+    <connection/>
+    <schema/>
+    <table/>
+    <size_limit_lines/>
+    <interval/>
+    <timeout_days/>
+  </pipeline-log-table>
+</pipeline>

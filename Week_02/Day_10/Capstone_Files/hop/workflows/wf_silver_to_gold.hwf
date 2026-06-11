@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Materialises all 4 gold marts sequentially. -->
+<workflow>
+  <name>wf_silver_to_gold</name>
+  <description>Refresh all gold marts.</description>
+  <workflow_version>2.0.0</workflow_version>
+
+  <actions>
+    <action><name>Start</name><type>SPECIAL</type><start>Y</start><xloc>40</xloc><yloc>40</yloc></action>
+
+    <action><name>mart:aircraft_density_by_region</name> <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/silver_to_gold_mart.hpl</filename><parameters><parameter><name>MART</name><value>aircraft_density_by_region</value></parameter></parameters><xloc>200</xloc><yloc>40</yloc></action>
+    <action><name>mart:weather_snapshot</name>           <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/silver_to_gold_mart.hpl</filename><parameters><parameter><name>MART</name><value>weather_snapshot</value></parameter></parameters><xloc>440</xloc><yloc>40</yloc></action>
+    <action><name>mart:seismic_24h_summary</name>        <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/silver_to_gold_mart.hpl</filename><parameters><parameter><name>MART</name><value>seismic_24h_summary</value></parameter></parameters><xloc>680</xloc><yloc>40</yloc></action>
+    <action><name>mart:region_alert_correlation</name>   <type>PIPELINE</type><filename>${PROJECT_HOME}/pipelines/silver_to_gold_mart.hpl</filename><parameters><parameter><name>MART</name><value>region_alert_correlation</value></parameter></parameters><xloc>920</xloc><yloc>40</yloc></action>
+
+    <action><name>Success</name><type>SUCCESS</type><xloc>1140</xloc><yloc>40</yloc></action>
+  </actions>
+
+  <hops>
+    <hop><from>Start</from>                              <to>mart:aircraft_density_by_region</to><enabled>Y</enabled></hop>
+    <hop><from>mart:aircraft_density_by_region</from>    <to>mart:weather_snapshot</to>          <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>mart:weather_snapshot</from>              <to>mart:seismic_24h_summary</to>       <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>mart:seismic_24h_summary</from>           <to>mart:region_alert_correlation</to>  <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+    <hop><from>mart:region_alert_correlation</from>      <to>Success</to>                        <enabled>Y</enabled><evaluation>Y</evaluation></hop>
+  </hops>
+</workflow>

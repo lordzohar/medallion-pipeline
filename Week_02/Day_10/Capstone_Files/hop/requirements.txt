@@ -1,0 +1,6 @@
+boto3==1.35.20
+fastavro==1.9.7
+pyarrow==17.0.0
+pandas==2.2.3
+duckdb==1.1.1
+minio==7.2.10

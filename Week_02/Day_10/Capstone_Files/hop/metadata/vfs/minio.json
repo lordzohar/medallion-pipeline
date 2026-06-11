@@ -1,0 +1,10 @@
+{
+  "name": "minio",
+  "description": "MinIO S3 endpoint shared by bronze/silver/gold buckets.",
+  "endpoint": "http://minio:9000",
+  "accessKey": "minioadmin",
+  "secretKey": "minioadmin",
+  "pathStyleAccess": true,
+  "signerOverride": "AWSS3V4SignerType",
+  "region": "us-east-1"
+}

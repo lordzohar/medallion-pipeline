@@ -1,0 +1,16 @@
+{
+  "name": "day10",
+  "description": "Day 10 capstone — bronze→silver→gold on MinIO over Kafka/Debezium CDC.",
+  "company": "Medallion Pipeline Lab",
+  "version": "1.0.0",
+  "metadataBaseFolder": "${PROJECT_HOME}/metadata",
+  "unitTestsBasePath":  "${PROJECT_HOME}/tests",
+  "dataSetsCsvFolder":  "${PROJECT_HOME}/datasets",
+  "enforcingExecutionInHome": false,
+  "config":   { "variables": [
+      { "name": "MINIO_ENDPOINT", "value": "http://minio:9000" },
+      { "name": "BRONZE_BUCKET",  "value": "bronze" },
+      { "name": "SILVER_BUCKET",  "value": "silver" },
+      { "name": "GOLD_BUCKET",    "value": "gold" }
+  ]}
+}

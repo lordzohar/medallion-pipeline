@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Day 10 Capstone &mdash; Live Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Segoe UI", Tahoma, sans-serif; background: #ddd; color: #222; }
+
+    /* ---- top bar ---- */
+    #header {
+      position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 1100;
+      background: #2c3540; color: #eee; padding: 0 12px;
+      display: flex; gap: 18px; align-items: center; border-bottom: 1px solid #1a1f26;
+    }
+    #header h1 { margin: 0; font-size: 14px; color: #ffcc00; font-weight: 600; }
+    #header .stat { font-size: 12px; color: #aaa; }
+    #header .stat b { color: #4fd1c5; font-weight: 600; margin-left: 4px; }
+    #header .right { margin-left: auto; display: flex; gap: 14px; align-items: center; font-size: 12px; }
+    #header select { background: #1c2129; color: #eee; border: 1px solid #444; border-radius: 3px; padding: 2px 6px; font-size: 12px; }
+    #m_conn { padding: 2px 8px; border-radius: 3px; }
+
+    /* ---- map ---- */
+    #map { position: absolute; top: 36px; left: 0; right: 300px; bottom: 0; background: #aad3df; }
+
+    /* ---- right panel (OnLine list, glidertracker-style) ---- */
+    #side {
+      position: absolute; top: 36px; right: 0; width: 300px; bottom: 0;
+      background: #f4f4f4; border-left: 1px solid #bbb;
+      display: flex; flex-direction: column; font-size: 12px;
+    }
+    #side .tabs { display: flex; border-bottom: 1px solid #bbb; background: #e8e8e8; }
+    #side .tabs button {
+      flex: 1; padding: 7px 4px; border: none; background: transparent; cursor: pointer; font-size: 12px;
+      border-right: 1px solid #ccc; color: #444;
+    }
+    #side .tabs button.active { background: #f4f4f4; color: #000; font-weight: 600; border-bottom: 2px solid #2c8; }
+    #side .tab-body { flex: 1; overflow-y: auto; }
+    #side table { width: 100%; border-collapse: collapse; }
+    #side th { position: sticky; top: 0; background: #d8e2c4; padding: 3px 6px; text-align: left; font-size: 11px; border-bottom: 1px solid #b6c192; }
+    #side td { padding: 2px 6px; border-bottom: 1px solid #e3e3e3; cursor: pointer; }
+    #side tr:hover td { background: #fff7b8; }
+    #side tr.selected td { background: #ffe27a; font-weight: 600; }
+    .alt-cell { font-family: ui-monospace, Consolas, monospace; text-align: right; }
+    .vz-arrow { display: inline-block; width: 12px; }
+    .vz-up    { color: #2ecc71; }
+    .vz-down  { color: #e74c3c; }
+    .vz-flat  { color: #888; }
+
+    /* ---- plane icon, glidertracker style ---- */
+    .plane-icon { width: 32px; height: 32px; pointer-events: none; }
+    .plane-icon svg { display: block; transition: transform 0.35s linear; }
+    .plane-label {
+      background: #ffd84d; color: #111; border: 1px solid #000; border-radius: 4px;
+      padding: 1px 4px; font-size: 10px; font-weight: bold; font-family: ui-monospace, Consolas, monospace;
+      white-space: nowrap; box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+      transform: translate(8px, -28px); display: inline-block;
+    }
+    .ac-marker-wrap { position: relative; }
+
+    /* ---- weather icon ---- */
+    .wx-icon {
+      background: rgba(255,255,255,0.92); border: 1px solid #4373a8; color: #1c3d66; border-radius: 4px;
+      padding: 1px 5px; font-size: 11px; font-weight: 600; white-space: nowrap;
+      box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    }
+
+    /* ---- seismic pulse ---- */
+    .quake-pulse { border-radius: 50%; animation: pulse 1.8s ease-out infinite; pointer-events: none; }
+    @keyframes pulse {
+      0%   { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(2.6); opacity: 0; }
+    }
+
+    /* ---- legend ---- */
+    #legend {
+      position: absolute; bottom: 10px; left: 10px; z-index: 900;
+      background: rgba(255,255,255,0.92); padding: 8px 10px; border-radius: 4px;
+      border: 1px solid #888; font-size: 11px; color: #222; min-width: 180px;
+    }
+    #legend h4 { margin: 0 0 4px 0; font-size: 11px; color: #333; }
+    #legend .row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    #legend .sw { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid #333; }
+
+    /* ---- toggles ---- */
+    #toggles {
+      position: absolute; top: 46px; left: 10px; z-index: 900;
+      background: rgba(255,255,255,0.92); padding: 6px 10px; border-radius: 4px;
+      border: 1px solid #888; font-size: 12px;
+    }
+    #toggles label { display: block; padding: 1px 0; cursor: pointer; }
+
+    /* ---- popups ---- */
+    .leaflet-popup-content { margin: 8px 12px; font-size: 12px; line-height: 1.5; }
+    .leaflet-popup-content b { color: #b45f06; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Live Tracker &mdash; <span id="city_name">…</span></h1>
+  <div class="stat">Aircraft <b id="m_aircraft">0</b></div>
+  <div class="stat">Stations <b id="m_stations">0</b></div>
+  <div class="stat">Quakes 24h <b id="m_quakes">0</b> <span style="color:#ff8c64">(nearby <b id="m_quakes_near">0</b>)</span></div>
+  <div class="right">
+    <label>Basemap
+      <select id="basemap">
+        <option value="osm">OSM standard</option>
+        <option value="topo">OpenTopoMap</option>
+        <option value="sat">Esri satellite</option>
+        <option value="dark">Carto dark</option>
+      </select>
+    </label>
+    <button id="recenter" style="background:#1c2129;color:#eee;border:1px solid #555;border-radius:3px;padding:3px 8px;cursor:pointer">Recenter</button>
+    <span id="m_conn" style="background:#a32; color:#fff">disconnected</span>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div id="toggles">
+  <label><input type="checkbox" id="t_aircraft" checked> Aircraft</label>
+  <label><input type="checkbox" id="t_trail"    checked> Selected trail</label>
+  <label><input type="checkbox" id="t_labels"   checked> Aircraft labels</label>
+  <label><input type="checkbox" id="t_weather"  checked> Weather stations</label>
+  <label><input type="checkbox" id="t_seismic"  checked> Seismic events</label>
+  <label><input type="checkbox" id="t_follow"  > Auto-zoom new quakes</label>
+</div>
+
+<div id="legend">
+  <h4>Seismic magnitude</h4>
+  <div class="row"><span class="sw" style="background:#2ecc71"></span> &lt; 3.0</div>
+  <div class="row"><span class="sw" style="background:#f1c40f"></span> 3.0 &ndash; 4.5</div>
+  <div class="row"><span class="sw" style="background:#e67e22"></span> 4.5 &ndash; 5.5</div>
+  <div class="row"><span class="sw" style="background:#e74c3c"></span> 5.5 &ndash; 6.5</div>
+  <div class="row"><span class="sw" style="background:#8e44ad"></span> 6.5+</div>
+</div>
+
+<div id="side">
+  <div class="tabs">
+    <button data-tab="aircraft" class="active">OnLine <span id="t_count_a">(0)</span></button>
+    <button data-tab="weather">Weather <span id="t_count_w">(0)</span></button>
+    <button data-tab="seismic">Seismic <span id="t_count_q">(0)</span></button>
+  </div>
+  <div class="tab-body" id="tab_aircraft">
+    <table>
+      <thead><tr><th>CN</th><th>Alt</th><th>Spd</th><th>Vz</th></tr></thead>
+      <tbody id="list_aircraft"></tbody>
+    </table>
+  </div>
+  <div class="tab-body" id="tab_weather" style="display:none">
+    <table>
+      <thead><tr><th>Station</th><th>°C</th><th>Wind</th></tr></thead>
+      <tbody id="list_weather"></tbody>
+    </table>
+  </div>
+  <div class="tab-body" id="tab_seismic" style="display:none">
+    <table>
+      <thead><tr><th>Mag</th><th>Depth</th><th>Region</th></tr></thead>
+      <tbody id="list_seismic"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // ---------- map ----------------------------------------------------------
+  const tileSources = {
+    osm:  { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '&copy; OpenStreetMap', max: 19 },
+    topo: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',    attr: '&copy; OpenTopoMap, &copy; OpenStreetMap', max: 17 },
+    sat:  { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: 'Tiles &copy; Esri', max: 19 },
+    dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', attr: '&copy; CARTO &copy; OpenStreetMap', max: 19 },
+  };
+  const map = L.map('map', { worldCopyJump: true, zoomControl: true }).setView([39.74, -104.99], 7);
+  let tileLayer = L.tileLayer(tileSources.osm.url, { attribution: tileSources.osm.attr, maxZoom: tileSources.osm.max }).addTo(map);
+  document.getElementById('basemap').onchange = e => {
+    const s = tileSources[e.target.value];
+    map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer(s.url, { attribution: s.attr, maxZoom: s.max }).addTo(map);
+  };
+
+  const layerAircraft = L.layerGroup().addTo(map);
+  const layerLabels   = L.layerGroup().addTo(map);
+  const layerWeather  = L.layerGroup().addTo(map);
+  const layerSeismic  = L.layerGroup().addTo(map);
+  const layerTrail    = L.layerGroup().addTo(map);   // only the selected aircraft's trail
+  const layerCity     = L.layerGroup().addTo(map);   // coverage circle + city marker
+
+  let CITY = null;
+  function applyCity(city) {
+    CITY = city;
+    document.getElementById('city_name').textContent =
+      city.name + ' (' + city.lat.toFixed(2) + ', ' + city.lon.toFixed(2) + ', r=' + city.radius_km + ' km)';
+    layerCity.clearLayers();
+    L.circle([city.lat, city.lon], {
+      radius: city.radius_km * 1000,
+      color: '#d81b60', weight: 1, opacity: 0.6, dashArray: '4 4',
+      fillColor: '#d81b60', fillOpacity: 0.04, interactive: false,
+    }).addTo(layerCity);
+    L.marker([city.lat, city.lon], {
+      icon: L.divIcon({
+        html: `<div style="background:#d81b60;color:#fff;padding:2px 6px;border-radius:3px;border:1px solid #000;font-size:11px;font-weight:bold;white-space:nowrap;box-shadow:1px 1px 2px rgba(0,0,0,0.4)">★ ${city.name}</div>`,
+        className: '', iconAnchor: [0, 8],
+      }),
+      interactive: false,
+    }).addTo(layerCity);
+    map.setView([city.lat, city.lon], 7);
+  }
+  document.getElementById('recenter').onclick = () => { if (CITY) map.setView([CITY.lat, CITY.lon], 7); };
+
+  // Fetch city config immediately so we can render before snapshot lands.
+  fetch('/api/config').then(r => r.json()).then(d => applyCity(d.city));
+
+  function toggleLayer(id, layer) {
+    document.getElementById(id).onchange = e => e.target.checked ? map.addLayer(layer) : map.removeLayer(layer);
+  }
+  toggleLayer('t_aircraft', layerAircraft);
+  toggleLayer('t_labels',   layerLabels);
+  toggleLayer('t_weather',  layerWeather);
+  toggleLayer('t_seismic',  layerSeismic);
+  toggleLayer('t_trail',    layerTrail);
+
+  // ---------- helpers ------------------------------------------------------
+  // Classic top-down plane silhouette (similar to glidertracker.org).
+  function planeSvg(track, selected) {
+    const t = (track == null ? 0 : track);
+    const fill   = selected ? '#d81b60' : '#111';
+    const stroke = selected ? '#fff'    : '#fff';
+    return `<div class="plane-icon"><svg width="32" height="32" viewBox="-16 -16 32 32" style="transform:rotate(${t}deg)">
+      <path d="M0,-14 L1.4,-3 L14,2 L14,4 L1.4,2 L0.8,11 L4,12.5 L4,14 L-4,14 L-4,12.5 L-0.8,11 L-1.4,2 L-14,4 L-14,2 L-1.4,-3 Z"
+            fill="${fill}" stroke="${stroke}" stroke-width="0.8" stroke-linejoin="round"/>
+      </svg></div>`;
+  }
+  function magColor(m) {
+    if (m == null) return '#888';
+    if (m < 3.0) return '#2ecc71';
+    if (m < 4.5) return '#f1c40f';
+    if (m < 5.5) return '#e67e22';
+    if (m < 6.5) return '#e74c3c';
+    return '#8e44ad';
+  }
+  function magRadius(m) { return Math.max(4, (m || 0) * 3); }
+  function vzArrow(v) {
+    if (v == null || isNaN(v)) return '<span class="vz-arrow vz-flat">&rarr;</span>';
+    if (v >  0.3) return '<span class="vz-arrow vz-up">&uarr;</span>';
+    if (v < -0.3) return '<span class="vz-arrow vz-down">&darr;</span>';
+    return '<span class="vz-arrow vz-flat">&rarr;</span>';
+  }
+  function fmt(v, suffix='', digits=1) {
+    if (v == null || isNaN(v)) return '&mdash;';
+    return Number(v).toFixed(digits) + suffix;
+  }
+  function ago(ms) {
+    if (!ms) return '&mdash;';
+    const s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 60)    return s + 's ago';
+    if (s < 3600)  return Math.floor(s/60)    + 'm ago';
+    if (s < 86400) return Math.floor(s/3600)  + 'h ago';
+    return Math.floor(s/86400) + 'd ago';
+  }
+  function shortCn(ac) {
+    return (ac.callsign || ac.key || '').toString().slice(-3) || '??';
+  }
+  // Haversine distance in km between two lat/lon pairs.
+  function distKm(lat1, lon1, lat2, lon2) {
+    const R = 6371, toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  function isNearCity(lat, lon) {
+    if (!CITY) return false;
+    return distKm(CITY.lat, CITY.lon, lat, lon) <= CITY.radius_km;
+  }
+
+  // ---------- state --------------------------------------------------------
+  const aircraftMarkers = new Map();   // key -> { ac, marker, label }
+  const stationMarkers  = new Map();
+  const quakeMarkers    = new Map();
+  let selectedKey = null;
+  let trailLine   = null;
+
+  // ---------- aircraft -----------------------------------------------------
+  function upsertAircraft(ac) {
+    const latlng = [ac.lat, ac.lon];
+    const isSel  = (ac.key === selectedKey);
+    const icon = L.divIcon({
+      html: planeSvg(ac.trk, isSel), className: '', iconSize: [32,32], iconAnchor: [16,16],
+    });
+    const popup = `<b>${ac.callsign || ac.key}</b><br>
+      Alt: ${fmt(ac.alt, ' m', 0)} &middot; Speed: ${fmt(ac.spd, ' km/h', 0)}<br>
+      Heading: ${fmt(ac.trk, '°', 0)} &middot; Climb: ${fmt(ac.clr, ' m/s', 1)}<br>
+      <small>via ${ac.receiver || '?'} &middot; ${ago(ac.ts)}</small>`;
+    let entry = aircraftMarkers.get(ac.key);
+    if (!entry) {
+      const marker = L.marker(latlng, { icon, riseOnHover: true }).bindPopup(popup);
+      marker.on('click', () => selectAircraft(ac.key));
+      layerAircraft.addLayer(marker);
+
+      const labelIcon = L.divIcon({
+        html: `<div class="plane-label">${shortCn(ac)}</div>`, className: '',
+        iconSize: [40, 14], iconAnchor: [-4, 22],
+      });
+      const label = L.marker(latlng, { icon: labelIcon, interactive: false });
+      layerLabels.addLayer(label);
+
+      entry = { ac, marker, label };
+      aircraftMarkers.set(ac.key, entry);
+    } else {
+      entry.ac = ac;
+      entry.marker.setLatLng(latlng).setIcon(icon).setPopupContent(popup);
+      entry.label.setLatLng(latlng);
+    }
+    if (isSel) refreshTrail(ac);
+    queueListRefresh();
+  }
+  function removeAircraft(key) {
+    const e = aircraftMarkers.get(key);
+    if (!e) return;
+    layerAircraft.removeLayer(e.marker);
+    layerLabels.removeLayer(e.label);
+    aircraftMarkers.delete(key);
+    if (key === selectedKey) clearTrail();
+    queueListRefresh();
+  }
+
+  function selectAircraft(key) {
+    if (selectedKey && aircraftMarkers.has(selectedKey)) {
+      const prev = aircraftMarkers.get(selectedKey).ac;
+      aircraftMarkers.get(selectedKey).marker.setIcon(L.divIcon({
+        html: planeSvg(prev.trk, false), className:'', iconSize:[32,32], iconAnchor:[16,16],
+      }));
+    }
+    selectedKey = key;
+    const e = aircraftMarkers.get(key);
+    if (!e) { clearTrail(); return; }
+    e.marker.setIcon(L.divIcon({
+      html: planeSvg(e.ac.trk, true), className:'', iconSize:[32,32], iconAnchor:[16,16],
+    }));
+    refreshTrail(e.ac);
+    map.panTo([e.ac.lat, e.ac.lon]);
+    document.querySelectorAll('#list_aircraft tr').forEach(tr =>
+      tr.classList.toggle('selected', tr.dataset.key === key));
+  }
+  function refreshTrail(ac) {
+    clearTrail();
+    const pts = (ac.trail || []).map(p => [p.lat, p.lon]);
+    if (pts.length < 2) return;
+    trailLine = L.polyline(pts, { color: '#d81b60', weight: 3, opacity: 0.8 });
+    layerTrail.addLayer(trailLine);
+  }
+  function clearTrail() { if (trailLine) { layerTrail.removeLayer(trailLine); trailLine = null; } }
+
+  // ---------- weather ------------------------------------------------------
+  function upsertStation(w) {
+    let m = stationMarkers.get(w.station_id);
+    const label = (w.temp_c != null ? Math.round(w.temp_c) + '°C' : w.station_id);
+    const icon = L.divIcon({
+      html: `<div class="wx-icon">${w.station_id} ${label}</div>`, className: '', iconAnchor: [0, 8],
+    });
+    const popup = `<b>${w.station_id}</b><br>${w.description || ''}<br>
+      Temp: ${fmt(w.temp_c, ' °C')} &middot; Humidity: ${fmt(w.humidity_pct, '%', 0)}<br>
+      Wind: ${fmt(w.wind_kmh, ' km/h', 0)} @ ${fmt(w.wind_dir, '°', 0)} (gust ${fmt(w.gust_kmh, ' km/h', 0)})<br>
+      Pressure: ${fmt(w.pressure_pa, ' Pa', 0)} &middot; Vis: ${fmt(w.visibility_m, ' m', 0)}<br>
+      <small>${ago(w.ts)}</small>`;
+    if (!m) {
+      m = L.marker([w.lat, w.lon], { icon }).bindPopup(popup);
+      stationMarkers.set(w.station_id, m);
+      layerWeather.addLayer(m);
+    } else {
+      m.setLatLng([w.lat, w.lon]).setIcon(icon).setPopupContent(popup);
+    }
+    queueListRefresh();
+  }
+
+  // ---------- seismic ------------------------------------------------------
+  function upsertQuake(q, recent) {
+    const id = q.event_id;
+    const color = magColor(q.magnitude);
+    const r = magRadius(q.magnitude);
+    const near = isNearCity(q.lat, q.lon);
+    const popup = `<b>M${fmt(q.magnitude, '', 1)} ${q.magnitude_type || ''}</b>${near ? ' <span style="color:#d81b60">[NEAR ' + CITY.name + ']</span>' : ''}<br>
+      ${q.region || ''}<br>Depth: ${fmt(q.depth_km, ' km', 0)}<br>
+      <small>${ago(q.ts)} &middot; ${q.action || ''}</small>`;
+    let entry = quakeMarkers.get(id);
+    if (!entry) {
+      const marker = L.circleMarker([q.lat, q.lon], {
+        radius: r,
+        color: near ? '#d81b60' : '#222',
+        weight: near ? 2 : 1,
+        fillColor: color, fillOpacity: 0.78,
+      }).bindPopup(popup);
+      layerSeismic.addLayer(marker);
+      entry = { marker, q, near };
+      quakeMarkers.set(id, entry);
+      // Always pulse "near" quakes; only pulse recent global ones for 30s.
+      if (recent || near) {
+        const pulse = L.divIcon({
+          html: `<div class="quake-pulse" style="width:${r*2}px;height:${r*2}px;background:${color};opacity:0.7"></div>`,
+          className: '', iconSize: [r*2, r*2],
+        });
+        const pulseMarker = L.marker([q.lat, q.lon], { icon: pulse, interactive: false });
+        layerSeismic.addLayer(pulseMarker);
+        entry.pulse = pulseMarker;
+        if (recent && !near) setTimeout(() => {
+          if (entry.pulse) { layerSeismic.removeLayer(entry.pulse); entry.pulse = null; }
+        }, 30000);
+      }
+      if (document.getElementById('t_follow').checked && recent && near) {
+        map.flyTo([q.lat, q.lon], Math.max(map.getZoom(), 6), { duration: 1.2 });
+      }
+    } else {
+      entry.q = q; entry.near = near;
+      entry.marker.setLatLng([q.lat, q.lon])
+        .setStyle({ radius: r, fillColor: color, color: near ? '#d81b60' : '#222', weight: near ? 2 : 1 })
+        .setPopupContent(popup);
+    }
+    queueListRefresh();
+  }
+
+  // ---------- side panel ---------------------------------------------------
+  document.querySelectorAll('#side .tabs button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#side .tabs button').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('#side .tab-body').forEach(b => b.style.display = 'none');
+      document.getElementById('tab_' + btn.dataset.tab).style.display = 'block';
+    };
+  });
+
+  let listTimer = null;
+  function queueListRefresh() {
+    if (listTimer) return;
+    listTimer = setTimeout(() => { listTimer = null; refreshLists(); }, 800);
+  }
+
+  function refreshLists() {
+    // --- aircraft list (sorted by callsign) ---
+    const acRows = Array.from(aircraftMarkers.values()).map(e => e.ac)
+      .sort((a, b) => (a.callsign || a.key).localeCompare(b.callsign || b.key));
+    const acHtml = acRows.map(ac => {
+      const altTxt = ac.alt != null ? Math.round(ac.alt) + 'm' : '&mdash;';
+      const spdTxt = ac.spd != null ? Math.round(ac.spd) + 'kmh' : '&mdash;';
+      const sel = ac.key === selectedKey ? ' class="selected"' : '';
+      return `<tr data-key="${ac.key}"${sel}>
+        <td>${ac.callsign || ac.key}</td>
+        <td class="alt-cell">${altTxt}</td>
+        <td class="alt-cell">${spdTxt}</td>
+        <td>${vzArrow(ac.clr)}</td></tr>`;
+    }).join('');
+    const tb = document.getElementById('list_aircraft');
+    tb.innerHTML = acHtml;
+    tb.querySelectorAll('tr').forEach(tr => tr.onclick = () => selectAircraft(tr.dataset.key));
+
+    // --- weather list ---
+    const wxRows = Array.from(stationMarkers.entries()).map(([sid, m]) => {
+      const ll = m.getLatLng();
+      const popup = m.getPopup();
+      return { sid, lat: ll.lat, lon: ll.lng };
+    });
+    // For weather we hold the raw data only inside DOM popups, so reconstruct from cache:
+    const wxHtml = Array.from(_wxCache.values())
+      .sort((a, b) => a.station_id.localeCompare(b.station_id))
+      .map(w => `<tr data-station="${w.station_id}">
+          <td>${w.station_id}</td>
+          <td class="alt-cell">${w.temp_c != null ? Math.round(w.temp_c) : '&mdash;'}</td>
+          <td class="alt-cell">${w.wind_kmh != null ? Math.round(w.wind_kmh) + ' km/h' : '&mdash;'}</td>
+        </tr>`).join('');
+    const wb = document.getElementById('list_weather');
+    wb.innerHTML = wxHtml;
+    wb.querySelectorAll('tr').forEach(tr => tr.onclick = () => {
+      const w = _wxCache.get(tr.dataset.station);
+      if (w) { map.panTo([w.lat, w.lon]); stationMarkers.get(w.station_id).openPopup(); }
+    });
+
+    // --- seismic list (newest first) ---
+    const sqRows = Array.from(quakeMarkers.values()).map(e => e.q)
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const sqHtml = sqRows.map(q => `<tr data-eid="${q.event_id}">
+        <td><span class="sw" style="background:${magColor(q.magnitude)}; display:inline-block; width:8px;height:8px;border-radius:50%"></span>
+            M${fmt(q.magnitude, '', 1)}</td>
+        <td class="alt-cell">${q.depth_km != null ? Math.round(q.depth_km) + 'km' : '&mdash;'}</td>
+        <td>${(q.region || '').slice(0, 26)}</td>
+      </tr>`).join('');
+    const sb = document.getElementById('list_seismic');
+    sb.innerHTML = sqHtml;
+    sb.querySelectorAll('tr')m_quakes_near').textContent =
+      Array.from(quakeMarkers.values()).filter(e => e.near).length;
+    document.getElementById('.forEach(tr => tr.onclick = () => {
+      const entry = quakeMarkers.get(tr.dataset.eid);
+      if (entry) { map.flyTo(entry.marker.getLatLng(), Math.max(map.getZoom(), 4)); entry.marker.openPopup(); }
+    });
+
+    document.getElementById('m_aircraft').textContent = aircraftMarkers.size;
+    document.getElementById('m_stations').textContent = stationMarkers.size;
+    document.getElementById('m_quakes').textContent   = quakeMarkers.size;
+    document.getElementById('t_count_a').textContent  = '(' + aircraftMarkers.size + ')';
+    document.getElementById('t_count_w').textContent  = '(' + stationMarkers.size + ')';
+    document.getElementById('t_count_q').textContent  = '(' + quakeMarkers.size + ')';
+  }
+
+  // ---------- socket -------------------------------------------------------
+  const _wxCache = new Map();  // station_id -> last full payload (for list rendering)
+  const socket = io();
+  socket.on('connect',    () => { const e=document.getElementById('m_conn'); e.textContent='live'; e.style.background='#2a8'; });
+  socket.on('disconnect', () => { const e=document.getElementById('m_conn'); e.textContent='disconnected'; e.style.background='#a32'; });
+if (s.city) applyCity(s.city);
+    
+  socket.on('snapshot', (s) => {
+    (s.aircraft || []).forEach(upsertAircraft);
+    (s.weather  || []).forEach(w => { _wxCache.set(w.station_id, w); upsertStation(w); });
+    (s.seismic  || []).forEach(q => upsertQuake(q, false));
+    refreshLists();
+  });
+  socket.on('aircraft',      (a) => upsertAircraft(a));
+  socket.on('aircraft_gone', (a) => removeAircraft(a.key));
+  socket.on('weather',       (w) => { _wxCache.set(w.station_id, w); upsertStation(w); });
+  socket.on('seismic',       (q) => upsertQuake(q, true));
+</script>
+</body>
+</html>

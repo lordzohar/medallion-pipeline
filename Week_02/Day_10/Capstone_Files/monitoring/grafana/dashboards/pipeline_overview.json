@@ -1,0 +1,55 @@
+{
+  "title": "Pipeline overview",
+  "uid": "pipeline-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active alerts",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum(quality_active_alerts)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "DLQ messages (sum)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum(quality_dlq_size)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka messages-in per topic",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(kafka_server_brokertopicmetrics_messagesin_per_sec[1m])",
+          "legendFormat": "{{ topic }}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Quality rule passes / fails",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "increase(quality_rule_results_total{status=\"PASS\"}[5m])",
+          "legendFormat": "PASS {{ rule }}", "refId": "A" },
+        { "expr": "increase(quality_rule_results_total{status=\"FAIL\"}[5m])",
+          "legendFormat": "FAIL {{ rule }}", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Gold mart row counts",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "business_dashboard_mart_rows",
+          "legendFormat": "{{ mart }}", "refId": "A" }
+      ]
+    }
+  ]
+}

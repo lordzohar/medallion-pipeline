@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Day 10 — Quality Dashboard</title>
+  <meta http-equiv="refresh" content="10">
+  <style>
+    body { font-family: -apple-system, Segoe UI, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    header { background: #1e293b; padding: 1rem 2rem; border-bottom: 1px solid #334155; }
+    header h1 { margin: 0; font-size: 1.4rem; color: #f8fafc; }
+    header small { color: #94a3b8; }
+    main { padding: 1.5rem 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem 1.2rem; }
+    .card h2 { margin-top: 0; font-size: 1.05rem; color: #f1f5f9; border-bottom: 1px solid #334155; padding-bottom: .5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #1f2a3d; }
+    th { color: #94a3b8; font-weight: 600; }
+    .PASS { color: #22c55e; font-weight: 600; }
+    .FAIL { color: #ef4444; font-weight: 600; }
+    .firing   { color: #ef4444; font-weight: 600; }
+    .resolved { color: #22c55e; }
+    .empty { color: #64748b; font-style: italic; }
+    .badge { background:#0ea5e9; color:#fff; border-radius:4px; padding:1px 6px; font-size:.75rem; }
+    .grid-wide { grid-column: 1 / span 2; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Quality dashboard <span class="badge">Streams</span></h1>
+    <small>Updated: {{ now }} — auto-refresh 10s | sources: OGN · NOAA · EMSC Seismic</small>
+  </header>
+  <main>
+
+    <section class="card">
+      <h2>Latest rule results</h2>
+      {% if latest %}
+      <table>
+        <thead><tr><th>Rule</th><th>Status</th><th>Rows</th><th>Detail</th><th>Checked</th></tr></thead>
+        <tbody>
+          {% for r in latest %}
+          <tr>
+            <td>{{ r.rule }}</td>
+            <td class="{{ r.status }}">{{ r.status }}</td>
+            <td>{{ r.rows_scanned }}</td>
+            <td>{{ r.detail }}</td>
+            <td><small>{{ r.checked_at }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">Waiting for first run of DAG 40_data_quality...</p>{% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Active alerts</h2>
+      {% if alerts %}
+      <table>
+        <thead><tr><th>Severity</th><th>Alert</th><th>Summary</th></tr></thead>
+        <tbody>
+          {% for a in alerts %}
+          <tr>
+            <td>{{ a.labels.severity or '?' }}</td>
+            <td><strong>{{ a.labels.alertname }}</strong></td>
+            <td>{{ a.annotations.summary or a.annotations.description or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">No active alerts.</p>{% endif %}
+    </section>
+
+    <section class="card grid-wide">
+      <h2>DLQ topic sizes</h2>
+      {% if dlq %}
+      <table>
+        <thead><tr><th>Topic</th><th>Messages</th></tr></thead>
+        <tbody>
+          {% for t, n in dlq %}
+          <tr><td>{{ t }}</td><td>{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">Sampling DLQ topics every 30s…</p>{% endif %}
+    </section>
+
+  </main>
+</body>
+</html>

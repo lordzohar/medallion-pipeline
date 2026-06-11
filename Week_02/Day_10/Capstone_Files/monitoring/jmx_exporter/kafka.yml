@@ -1,0 +1,22 @@
+# Minimal JMX exporter config for Kafka brokers.
+# Captures broker / partition / topic / network metrics needed by the
+# alert rules in monitoring/alerts/.
+lowercaseOutputName: true
+rules:
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=(BytesIn|BytesOut|MessagesIn)PerSec, topic=(.+)><>OneMinuteRate
+    name: kafka_server_brokertopicmetrics_$1_per_sec
+    labels: { topic: "$2" }
+    type: GAUGE
+  - pattern: kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value
+    name: kafka_server_replicamanager_underreplicatedpartitions
+    type: GAUGE
+  - pattern: kafka.controller<type=KafkaController, name=OfflinePartitionsCount><>Value
+    name: kafka_controller_kafkacontroller_offlinepartitionscount
+    type: GAUGE
+  - pattern: kafka.controller<type=KafkaController, name=ActiveControllerCount><>Value
+    name: kafka_controller_active_controller_count
+    type: GAUGE
+  - pattern: kafka.network<type=RequestMetrics, name=RequestsPerSec, request=(\w+)><>OneMinuteRate
+    name: kafka_network_requests_per_sec
+    labels: { request: "$1" }
+    type: GAUGE

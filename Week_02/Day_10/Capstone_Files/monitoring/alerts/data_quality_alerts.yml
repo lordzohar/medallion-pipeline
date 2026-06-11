@@ -1,0 +1,35 @@
+groups:
+  - name: data_quality
+    interval: 30s
+    rules:
+      - alert: QualityRuleFailing
+        expr: increase(quality_rule_results_total{status="FAIL"}[10m]) > 0
+        for: 5m
+        labels: { severity: warning, category: quality }
+        annotations:
+          summary: "Quality rule {{ $labels.rule }} failed in last 10m"
+          description: "At least one FAIL recorded for rule {{ $labels.rule }} in the past 10 minutes. See the quality dashboard."
+
+      - alert: DLQGrowing
+        expr: quality_dlq_size > 100
+        for: 5m
+        labels: { severity: warning, category: quality }
+        annotations:
+          summary: "DLQ {{ $labels.topic }} has {{ $value }} messages"
+          description: "Dead-letter queue {{ $labels.topic }} crossed 100 messages. Investigate connector / schema."
+
+      - alert: NoQualityResults
+        expr: absent(quality_rule_results_total)
+        for: 15m
+        labels: { severity: warning, category: quality }
+        annotations:
+          summary: "No quality rule results in 15m"
+          description: "Airflow DAG 40_data_quality has not pushed any results. Check scheduler."
+
+      - alert: IngestorStale
+        expr: increase(quality_rule_results_total{rule=~"seismic\\.freshness|noaa\\.freshness",status="FAIL"}[15m]) > 0
+        for: 5m
+        labels: { severity: critical, category: ingest }
+        annotations:
+          summary: "Stream ingestor stale: {{ $labels.rule }}"
+          description: "Freshness check failed for {{ $labels.rule }} — verify the corresponding ingestor container is up and reachable."

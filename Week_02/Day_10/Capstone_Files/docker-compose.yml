@@ -1,0 +1,531 @@
+# =============================================================================
+# Day 10 capstone — full medallion stack with REAL streaming sources.
+#
+# Sources:
+#   OGN aircraft positions (APRS)  -> ingestor-ogn      -> Kafka
+#   NOAA weather (api.weather.gov) -> ingestor-noaa     -> Kafka
+#   EMSC seismic events (websocket)-> ingestor-seismic  -> Kafka
+#   Postgres config tables         -> Debezium pgoutput -> Kafka
+#
+# Bronze (Avro) <- Kafka via S3 Sink Connector
+# Silver (Avro) <- Hop/Python transforms
+# Gold   (Parquet) <- Hop/Python transforms
+#
+# See ARCHITECTURE.md for the full topology.
+# =============================================================================
+
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_PG_USER}:${AIRFLOW_PG_PASSWORD}@airflow-db:5432/${AIRFLOW_PG_DB}
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "30"
+    # Stack-wide handles
+    KAFKA_BOOTSTRAP: ${KAFKA_INTERNAL}
+    SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL_INTERNAL}
+    KAFKA_CONNECT_URL: http://connect:8083
+    MINIO_ENDPOINT: ${MINIO_ENDPOINT_INTERNAL}
+    MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+    MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    BRONZE_BUCKET: ${BRONZE_BUCKET}
+    SILVER_BUCKET: ${SILVER_BUCKET}
+    GOLD_BUCKET: ${GOLD_BUCKET}
+    CONFIG_PG_HOST: config-db
+    CONFIG_PG_USER: ${CONFIG_PG_USER}
+    CONFIG_PG_PASSWORD: ${CONFIG_PG_PASSWORD}
+    CONFIG_PG_DB: ${CONFIG_PG_DB}
+    QUALITY_DASHBOARD_URL: http://quality-dashboard:5001
+    BUSINESS_DASHBOARD_URL: http://business-dashboard:5002
+    HOP_CONTAINER: hop
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./hop:/opt/hop_project:ro
+    - ./app:/opt/app:ro
+    - ./debezium:/opt/debezium:ro
+    - airflow-logs:/opt/airflow/logs
+    - /var/run/docker.sock:/var/run/docker.sock
+  user: "${AIRFLOW_UID}:0"
+  networks: [pipeline]
+  depends_on:
+    airflow-db:
+      condition: service_healthy
+
+services:
+
+  # =================================================================
+  # Streaming backbone
+  # =================================================================
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    hostname: zookeeper
+    ports: ["2181:2181"]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [pipeline]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    hostname: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "${KAFKA_EXTERNAL_PORT}:9092"
+      - "9404:9404"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_OPTS: "-javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx_exporter/kafka.yml"
+    volumes:
+      - ./monitoring/jmx_exporter:/opt/jmx_exporter:ro
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+    networks: [pipeline]
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    container_name: schema-registry
+    hostname: schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports: ["${SCHEMA_REGISTRY_PORT}:8081"]
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: BACKWARD
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/subjects || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+    networks: [pipeline]
+
+  connect:
+    image: confluentinc/cp-kafka-connect:7.5.0
+    container_name: connect
+    hostname: connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      config-db:
+        condition: service_healthy
+    ports: ["${KAFKA_CONNECT_PORT}:8083"]
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: connect-cluster
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect_configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect_offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect_statuses
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/etc/kafka-connect/plugins
+      KAFKA_HEAP_OPTS: "-Xms512M -Xmx1G"
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+    volumes:
+      - ./debezium/plugins:/etc/kafka-connect/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks: [pipeline]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports: ["${KAFKA_UI_PORT}:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: pipeline
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
+    networks: [pipeline]
+
+  # =================================================================
+  # Sources: Postgres (config tables, CDC) + 3 stream ingestors
+  # =================================================================
+
+  config-db:
+    image: postgres:15
+    container_name: config-db
+    hostname: config-db
+    ports: ["${CONFIG_PG_PORT}:5432"]
+    environment:
+      POSTGRES_USER: ${CONFIG_PG_USER}
+      POSTGRES_PASSWORD: ${CONFIG_PG_PASSWORD}
+      POSTGRES_DB: ${CONFIG_PG_DB}
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
+    volumes:
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - config-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CONFIG_PG_USER} -d ${CONFIG_PG_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [pipeline]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    depends_on:
+      config-db:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${CONFIG_PG_USER}:${CONFIG_PG_PASSWORD}@config-db:5432/${CONFIG_PG_DB}?sslmode=disable"
+    networks: [pipeline]
+
+  # --- shared image for ingestors + ops scripts -----------------------------
+
+  app-base: &app-base
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    image: day10-app:latest
+    environment: &app-env
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFIG_PG_HOST: config-db
+      CONFIG_PG_USER: ${CONFIG_PG_USER}
+      CONFIG_PG_PASSWORD: ${CONFIG_PG_PASSWORD}
+      CONFIG_PG_DB: ${CONFIG_PG_DB}
+      CITY_NAME: ${CITY_NAME}
+      CITY_LAT: ${CITY_LAT}
+      CITY_LON: ${CITY_LON}
+      CITY_RADIUS_KM: ${CITY_RADIUS_KM}
+    networks: [pipeline]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+
+  # Idle utility container for `docker exec` from Airflow (config drift, etc.).
+  app:
+    <<: *app-base
+    container_name: app
+    command: ["tail", "-f", "/dev/null"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      config-db:
+        condition: service_healthy
+
+  ingestor-ogn:
+    <<: *app-base
+    container_name: ingestor-ogn
+    command: ["python", "/app/ingestors/ogn_ingestor.py"]
+    environment:
+      <<: *app-env
+      OGN_TOPIC: ogn.aircraft.positions
+      OGN_APRS_USER: ${OGN_APRS_USER}
+      # leave OGN_APRS_FILTER blank — the ingestor builds it from CITY_*
+      OGN_APRS_FILTER: ""
+    restart: unless-stopped
+
+  ingestor-noaa:
+    <<: *app-base
+    container_name: ingestor-noaa
+    command: ["python", "/app/ingestors/noaa_ingestor.py"]
+    environment:
+      <<: *app-env
+      NOAA_OBS_TOPIC: noaa.observations
+      NOAA_ALERT_TOPIC: noaa.alerts
+      NOAA_POLL_SEC: ${NOAA_POLL_SEC}
+      NOAA_STATIONS: ${NOAA_STATIONS}
+      NOAA_USER_AGENT: ${NOAA_USER_AGENT}
+    restart: unless-stopped
+
+  ingestor-seismic:
+    <<: *app-base
+    container_name: ingestor-seismic
+    command: ["python", "/app/ingestors/seismic_ingestor.py"]
+    environment:
+      <<: *app-env
+      SEISMIC_TOPIC: seismic.events
+      SEISMIC_WS_URL: ${SEISMIC_WS_URL}
+    restart: unless-stopped
+
+  # =================================================================
+  # MinIO (S3-compatible storage for bronze/silver/gold)
+  # =================================================================
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: minio
+    hostname: minio
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [pipeline]
+
+  # =================================================================
+  # Apache Hop (transforms + GUI)
+  # =================================================================
+
+  hop:
+    build:
+      context: ./hop
+      dockerfile: Dockerfile
+    container_name: hop
+    depends_on:
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports: ["${HOP_WEB_PORT}:8080"]
+    environment:
+      HOP_PROJECT_FOLDER: ${HOP_PROJECT_HOME}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT_INTERNAL}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFIG_PG_HOST: config-db
+      CONFIG_PG_USER: ${CONFIG_PG_USER}
+      CONFIG_PG_PASSWORD: ${CONFIG_PG_PASSWORD}
+      CONFIG_PG_DB: ${CONFIG_PG_DB}
+    volumes:
+      - ./hop:/files/project
+      - hop-cache:/root/.hop
+    networks: [pipeline]
+
+  # =================================================================
+  # Airflow (LocalExecutor)
+  # =================================================================
+
+  airflow-db:
+    image: postgres:15
+    container_name: airflow-db
+    environment:
+      POSTGRES_USER: ${AIRFLOW_PG_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_PG_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_PG_DB}
+    volumes:
+      - airflow-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_PG_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [pipeline]
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        airflow users create --role Admin --username ${AIRFLOW_ADMIN_USER} \
+            --password ${AIRFLOW_ADMIN_PASSWORD} --email admin@local \
+            --firstname admin --lastname admin || true
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
+    ports: ["${AIRFLOW_WEB_PORT}:8080"]
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health | grep -q 'healthy' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # =================================================================
+  # Dashboards
+  # =================================================================
+
+  quality-dashboard:
+    build:
+      context: ./quality_dashboard
+      dockerfile: Dockerfile
+    container_name: quality-dashboard
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports: ["${QUALITY_DASHBOARD_PORT}:5001"]
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT_INTERNAL}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      SILVER_BUCKET: ${SILVER_BUCKET}
+      KAFKA_BOOTSTRAP: kafka:29092
+      KAFKA_CONNECT_URL: http://connect:8083
+    networks: [pipeline]
+
+  business-dashboard:
+    build:
+      context: ./business_dashboard
+      dockerfile: Dockerfile
+    container_name: business-dashboard
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports: ["${BUSINESS_DASHBOARD_PORT}:5002"]
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT_INTERNAL}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      GOLD_BUCKET: ${GOLD_BUCKET}
+    networks: [pipeline]
+
+  live-map-dashboard:
+    build:
+      context: ./live_map_dashboard
+      dockerfile: Dockerfile
+    container_name: live-map-dashboard
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports: ["${LIVE_MAP_DASHBOARD_PORT}:5003"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      OGN_TOPIC: ogn.aircraft.positions
+      NOAA_OBS_TOPIC: noaa.observations
+      SEISMIC_TOPIC: seismic.events
+      CITY_NAME: ${CITY_NAME}
+      CITY_LAT: ${CITY_LAT}
+      CITY_LON: ${CITY_LON}
+      CITY_RADIUS_KM: ${CITY_RADIUS_KM}
+      LIVEMAP_MAX_AIRCRAFT: ${LIVEMAP_MAX_AIRCRAFT}
+      LIVEMAP_MAX_TRAIL: ${LIVEMAP_MAX_TRAIL}
+      LIVEMAP_MAX_QUAKES: ${LIVEMAP_MAX_QUAKES}
+      LIVEMAP_AIRCRAFT_TTL_SEC: ${LIVEMAP_AIRCRAFT_TTL_SEC}
+    restart: unless-stopped
+    networks: [pipeline]
+
+  # =================================================================
+  # Observability
+  # =================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    ports: ["${PROMETHEUS_PORT}:9090"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    networks: [pipeline]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    ports: ["${ALERTMANAGER_PORT}:9093"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks: [pipeline]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    depends_on:
+      - prometheus
+    ports: ["${GRAFANA_PORT}:3000"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [pipeline]
+
+networks:
+  pipeline:
+    driver: bridge
+    name: day10_pipeline
+
+volumes:
+  config-pg-data:
+  airflow-pg-data:
+  airflow-logs:
+  minio-data:
+  prometheus-data:
+  grafana-data:
+  hop-cache:

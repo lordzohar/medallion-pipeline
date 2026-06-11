@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "namespace": "org.pipeline.ogn",
+  "name": "OgnPosition",
+  "doc": "Aircraft position beacon parsed from the Open Glider Network APRS feed.",
+  "fields": [
+    { "name": "event_id",        "type": "string",                           "doc": "Synthetic UUID assigned by the ingestor." },
+    { "name": "beacon_type",     "type": "string",                           "doc": "aprs_aircraft | aprs_receiver | aprs_status ..." },
+    { "name": "callsign",        "type": ["null", "string"], "default": null },
+    { "name": "address",         "type": ["null", "string"], "default": null,"doc": "OGN device address (hex)." },
+    { "name": "address_type",    "type": ["null", "int"],    "default": null },
+    { "name": "aircraft_type",   "type": ["null", "int"],    "default": null,"doc": "1=Glider, 2=TowPlane, 3=Helicopter, ..." },
+    { "name": "ts_ms",           "type": "long",                             "doc": "Beacon timestamp in epoch ms (UTC)." },
+    { "name": "ingested_ms",     "type": "long",                             "doc": "Wall-clock time the ingestor produced the message." },
+    { "name": "lat",             "type": ["null", "double"], "default": null },
+    { "name": "lon",             "type": ["null", "double"], "default": null },
+    { "name": "altitude_m",      "type": ["null", "double"], "default": null },
+    { "name": "ground_speed_kmh","type": ["null", "double"], "default": null },
+    { "name": "track_deg",       "type": ["null", "double"], "default": null },
+    { "name": "climb_rate_mps",  "type": ["null", "double"], "default": null },
+    { "name": "turn_rate_dps",   "type": ["null", "double"], "default": null },
+    { "name": "receiver_name",   "type": ["null", "string"], "default": null,"doc": "OGN ground station that received the beacon." },
+    { "name": "raw",             "type": ["null", "string"], "default": null,"doc": "Raw APRS line for forensics (truncated to 300 chars)." }
+  ]
+}

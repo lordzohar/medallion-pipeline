@@ -1,0 +1,17 @@
+route:
+  receiver: quality-dashboard-webhook
+  group_by: [alertname, severity]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: quality-dashboard-webhook
+
+receivers:
+  - name: quality-dashboard-webhook
+    webhook_configs:
+      - url: http://quality-dashboard:5001/webhook/alerts
+        send_resolved: true
+
+inhibit_rules: []
