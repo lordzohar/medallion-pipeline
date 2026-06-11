@@ -192,6 +192,9 @@ Week_*/Day_*/Lab/*.bak
 *.docx.bak
 .~lock.*#
 
+# Microsoft Office lock files (created while a doc/pptx/xlsx is open)
+~$*
+
 # Generated Day 6 validation outputs
 Week_02/Day_06/Lab_Files/customers_cleaned.csv
 Week_02/Day_06/Lab_Files/enriched_orders.csv
