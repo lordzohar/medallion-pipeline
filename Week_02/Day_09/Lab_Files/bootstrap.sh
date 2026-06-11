@@ -30,11 +30,9 @@ echo "Starting Kafka KRaft cluster + monitoring stack..."
 docker compose up -d
 
 # 4) Wait for Kafka -----------------------------------------------------------
-#    KAFKA_OPTS is cleared so the JMX javaagent doesn't try to re-bind 7071
-#    inside the kafka1 container while the broker JVM already owns it.
 echo "Waiting for Kafka cluster to be ready..."
 for i in $(seq 1 30); do
-    if docker exec -e KAFKA_OPTS= kafka1 kafka-broker-api-versions --bootstrap-server kafka1:29092 >/dev/null 2>&1; then
+    if docker exec kafka1 kafka-broker-api-versions --bootstrap-server kafka1:29092 >/dev/null 2>&1; then
         echo "  Kafka ready."
         break
     fi

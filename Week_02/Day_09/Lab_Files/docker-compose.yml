@@ -33,12 +33,20 @@ services:
       CLUSTER_ID: 'kraft-taxi-cluster-001'
       KAFKA_JMX_PORT: 9991
       KAFKA_JMX_HOSTNAME: kafka1
-      KAFKA_OPTS: '-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka.yml'
     volumes:
       - ./jmx_exporter:/opt/jmx-exporter
+    # KAFKA_OPTS is exported only inside this shell so the broker JVM gets the
+    # JMX Prometheus javaagent, but `docker exec ... kafka-topics ...` sessions
+    # do NOT inherit it (otherwise the second JVM tries to re-bind port 7071
+    # with `Address already in use`).
+    entrypoint:
+      - bash
+      - -c
+      - |
+        export KAFKA_OPTS='-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka.yml'
+        exec /etc/confluent/docker/run
     healthcheck:
-      # Clear KAFKA_OPTS so the JMX javaagent doesn't try to re-bind port 7071
-      test: ["CMD-SHELL", "KAFKA_OPTS= kafka-broker-api-versions --bootstrap-server kafka1:29092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka1:29092"]
       interval: 10s
       timeout: 10s
       retries: 15
@@ -65,12 +73,17 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
       CLUSTER_ID: 'kraft-taxi-cluster-001'
-      KAFKA_OPTS: '-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka.yml'
     volumes:
       - ./jmx_exporter:/opt/jmx-exporter
+    # See kafka1 above for why KAFKA_OPTS lives in entrypoint, not environment.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        export KAFKA_OPTS='-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka.yml'
+        exec /etc/confluent/docker/run
     healthcheck:
-      # Clear KAFKA_OPTS so the JMX javaagent doesn't try to re-bind port 7071
-      test: ["CMD-SHELL", "KAFKA_OPTS= kafka-broker-api-versions --bootstrap-server kafka2:29092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka2:29092"]
       interval: 10s
       timeout: 10s
       retries: 15
@@ -97,12 +110,17 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
       CLUSTER_ID: 'kraft-taxi-cluster-001'
-      KAFKA_OPTS: '-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka.yml'
     volumes:
       - ./jmx_exporter:/opt/jmx-exporter
+    # See kafka1 above for why KAFKA_OPTS lives in entrypoint, not environment.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        export KAFKA_OPTS='-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka.yml'
+        exec /etc/confluent/docker/run
     healthcheck:
-      # Clear KAFKA_OPTS so the JMX javaagent doesn't try to re-bind port 7071
-      test: ["CMD-SHELL", "KAFKA_OPTS= kafka-broker-api-versions --bootstrap-server kafka3:29092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka3:29092"]
       interval: 10s
       timeout: 10s
       retries: 15
