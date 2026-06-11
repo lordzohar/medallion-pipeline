@@ -37,10 +37,12 @@ services:
     volumes:
       - ./jmx_exporter:/opt/jmx-exporter
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka1:29092"]
+      # Clear KAFKA_OPTS so the JMX javaagent doesn't try to re-bind port 7071
+      test: ["CMD-SHELL", "KAFKA_OPTS= kafka-broker-api-versions --bootstrap-server kafka1:29092 >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 15
+      start_period: 30s
 
   kafka2:
     image: confluentinc/cp-kafka:7.6.1
@@ -67,10 +69,12 @@ services:
     volumes:
       - ./jmx_exporter:/opt/jmx-exporter
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka2:29092"]
+      # Clear KAFKA_OPTS so the JMX javaagent doesn't try to re-bind port 7071
+      test: ["CMD-SHELL", "KAFKA_OPTS= kafka-broker-api-versions --bootstrap-server kafka2:29092 >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 15
+      start_period: 30s
 
   kafka3:
     image: confluentinc/cp-kafka:7.6.1
@@ -97,10 +101,12 @@ services:
     volumes:
       - ./jmx_exporter:/opt/jmx-exporter
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka3:29092"]
+      # Clear KAFKA_OPTS so the JMX javaagent doesn't try to re-bind port 7071
+      test: ["CMD-SHELL", "KAFKA_OPTS= kafka-broker-api-versions --bootstrap-server kafka3:29092 >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 15
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
   # POSTGRES - reference database (drivers table, also used by ksqlDB joins)
