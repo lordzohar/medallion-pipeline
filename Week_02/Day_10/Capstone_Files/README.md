@@ -5,8 +5,8 @@ A self-contained Docker stack that ingests **three live public streams**
 **CDC config drift**, lands them in MinIO as bronze Avro via the Kafka
 Connect S3 Sink, refines them through silver/gold using Apache Hop
 pipelines (Python reference transforms drive the same logic from
-Airflow), and surfaces results in two Flask dashboards plus a Prometheus
-/ Grafana / Alertmanager observability stack.
+Airflow), and surfaces results in three Flask dashboards (quality, business,
+live map) plus a Prometheus / Grafana / Alertmanager observability stack.
 
 ## Architecture at a glance
 
@@ -27,6 +27,9 @@ Airflow), and surfaces results in two Flask dashboards plus a Prometheus
                        noaa.alerts            | seismic.events
                        config.public.regions  | config.public.alert_thresholds
                        config.public.subscriber_watchlist
+                                       |
+                                       +----------------------> live-map-dashboard
+                                       |                         (direct Kafka consumers)
                                        │  (Confluent S3 Sink, Avro)
                                        ▼
                               MinIO  s3://bronze/<topic>/year=…/month=…/day=…/hour=…/
@@ -54,7 +57,7 @@ Airflow), and surfaces results in two Flask dashboards plus a Prometheus
 
 | Folder | Purpose |
 | --- | --- |
-| [docker-compose.yml](docker-compose.yml)                         | 18 services on a single `pipeline` bridge network |
+| [docker-compose.yml](docker-compose.yml)                         | 24 services on a single `pipeline` bridge network |
 | [postgres/init/](postgres/init/)                                 | Config-only schema (3 tables, ≥1000 rows) + WAL bootstrap |
 | [debezium/](debezium/)                                           | Source (`config.public.*`) + S3 sinks for CDC and streams |
 | [app/ingestors/](app/ingestors/)                                 | 3 long-running ingestors: OGN, NOAA, Seismic |
@@ -128,6 +131,6 @@ s3://gold/<mart>/latest.parquet     # overwritten — dashboards read this
 
 ## Files brought into this repo since the previous synthetic build
 
-This capstone replaces the earlier e-commerce simulator. See
-[ARCHITECTURE.md](ARCHITECTURE.md) for the design rationale and
-[RUNBOOK.md](RUNBOOK.md) for the demo script.
+This capstone replaces the earlier e-commerce simulator. The canonical
+student guide is [../Capstone_Guide/Capstone.docx](../Capstone_Guide/Capstone.docx);
+it includes the architecture reference and runbook appendix.

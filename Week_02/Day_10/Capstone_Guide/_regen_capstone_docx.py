@@ -47,10 +47,33 @@ UL([
     "Postgres reference tables (regions, alert_thresholds, subscriber_watchlist) via Debezium pgoutput.",
 ])
 
+# ---- Architecture roles --------------------------------------------------
+H("Where Debezium, Airflow, and the Live Dashboard Fit")
+P(
+    "The public feeds are the real-time data sources, but the capstone also "
+    "needs control-plane data, orchestration, and user-facing views. These "
+    "parts are separate on purpose:"
+)
+UL([
+    "Debezium captures changes from the Postgres config database. It is not a fourth sensor feed; it streams reference/config changes such as regions, alert thresholds, and subscriber watchlists into Kafka as CDC topics.",
+    "Airflow orchestrates batch-style work around the live streams. The ingestors run continuously as services, while Airflow schedules config drift, bronze-to-silver promotion, silver-to-gold marts, data quality checks, and business dashboard refreshes.",
+    "The live-map dashboard consumes the OGN, NOAA, and EMSC Kafka topics directly so the demo can show movement immediately. It does not wait for the 5-minute silver/gold batch cycle.",
+    "The business dashboard reads gold Parquet marts. The quality dashboard reads rule results, DLQ state, and Alertmanager webhooks.",
+])
+P("One-screen flow:")
+CODE(
+    "OGN / NOAA / EMSC -> ingestor services -> Kafka -> live-map-dashboard\n"
+    "config-db Postgres -> Debezium -> Kafka config.public.* topics\n"
+    "Kafka -> S3 Sink connectors -> MinIO bronze Avro\n"
+    "Airflow -> Hop/Python transforms -> MinIO silver Avro -> MinIO gold Parquet\n"
+    "gold Parquet -> business-dashboard; quality results / alerts -> quality-dashboard\n"
+    "Prometheus scrapes Kafka, Postgres, MinIO, Connect, Airflow-facing services, and dashboards\n"
+)
+
 # ---- Deliverables --------------------------------------------------------
 H("Deliverables")
 UL([
-    "A running docker-compose stack (~22 containers) on a single bridge network.",
+    "A running docker-compose stack (~24 containers) on a single bridge network.",
     "A scoped demo city (default: Denver / Boulder, CO) configured through a single .env block.",
     "Avro contracts in Schema Registry for the 4 stream subjects.",
     "Debezium source + two S3 Sink connectors (CDC topics, stream topics) configured and RUNNING.",
@@ -178,10 +201,122 @@ UL([
 ])
 P("State for each failure: the monitoring signal, the recovery action, and how long until normal service resumed (visible in the dashboard).")
 
+# ---- Architecture appendix -----------------------------------------------
+H("Appendix A — Architecture Reference")
+P(
+    "This section replaces the standalone ARCHITECTURE.md. It is the compact "
+    "source of truth for the implemented stack."
+)
+H("Design Goals", level=2)
+UL([
+    "Real streams, not simulators: OGN, NOAA, and EMSC exercise TCP, REST polling, and WebSocket ingestion patterns.",
+    "CDC where CDC belongs: Postgres holds config/reference data only; Debezium streams row changes into Kafka.",
+    "Medallion in object storage: bronze and silver are Avro; gold is Parquet for fast dashboard reads.",
+    "Hop is the canonical transform design; Python reference transforms make the same logic runnable from Airflow and tests.",
+    "Three dashboards serve three audiences: live map for source-level proof, quality dashboard for DataOps, business dashboard for gold marts.",
+    "Everything observable: Prometheus scrapes Kafka, Postgres, MinIO, Connect, and dashboards; Alertmanager posts alerts to the quality dashboard.",
+])
+H("Service Inventory", level=2)
+UL([
+    "Kafka layer: zookeeper, kafka, schema-registry, connect, kafka-ui.",
+    "Source/config layer: config-db, postgres-exporter, app-base, app, ingestor-ogn, ingestor-noaa, ingestor-seismic.",
+    "Storage/transform layer: minio, hop.",
+    "Orchestration layer: airflow-db, airflow-init, airflow-webserver, airflow-scheduler.",
+    "Presentation layer: quality-dashboard, business-dashboard, live-map-dashboard.",
+    "Observability layer: prometheus, alertmanager, grafana.",
+])
+H("Topic and Subject Inventory", level=2)
+UL([
+    "ogn.aircraft.positions — OGN aircraft positions, Avro subject ogn.aircraft.positions-value.",
+    "noaa.observations — NOAA station observations, Avro subject noaa.observations-value.",
+    "noaa.alerts — NOAA weather alerts, Avro subject noaa.alerts-value.",
+    "seismic.events — EMSC earthquake events, Avro subject seismic.events-value.",
+    "config.public.regions, config.public.alert_thresholds, config.public.subscriber_watchlist — Debezium-managed CDC topics.",
+    "config.heartbeat and dlq.* topics — connector heartbeat and dead-letter queues.",
+])
+H("Medallion Contracts", level=2)
+CODE(
+    "Bronze Avro: s3://bronze/<topic>/year=YYYY/month=MM/day=DD/hour=HH/<topic>+<part>+<offset>.avro\n"
+    "Silver Avro: s3://silver/<entity>/year=YYYY/month=MM/day=DD/part-<hash>.avro\n"
+    "Silver audit: s3://silver/_quality/<entity>/<utc-iso>.avro\n"
+    "Gold snapshot: s3://gold/<mart>/snapshot=YYYYMMDDTHHMMSSZ/part-0.parquet\n"
+    "Gold latest: s3://gold/<mart>/latest.parquet\n"
+)
+P("Gold marts:")
+UL([
+    "aircraft_density_by_region — last-1h aircraft counts and movement stats by region.",
+    "weather_snapshot — latest NOAA observation per station joined to region metadata.",
+    "seismic_24h_summary — earthquake counts bucketed by magnitude and region.",
+    "region_alert_correlation — quakes over the live threshold joined to subscribed regions and watchlists.",
+])
+H("DAG Topology", level=2)
+CODE(
+    "00_bootstrap        manual     create topics, buckets, schemas, connectors\n"
+    "15_config_drift     every 2m   mutate config tables to keep Debezium CDC warm\n"
+    "30_hop_medallion    every 5m   bronze -> silver, then silver -> 4 gold marts\n"
+    "40_data_quality     every 5m   rule pack -> quality-dashboard\n"
+    "50_business_kpis    every 5m   POST business-dashboard /api/refresh\n"
+)
+P(
+    "The stream ingestors and live-map dashboard are long-running services, "
+    "not DAGs. They stay connected to Kafka continuously."
+)
+H("Observability Map", level=2)
+CODE(
+    "Kafka JMX :9404, postgres-exporter :9187, MinIO :9000,\n"
+    "quality-dashboard :5001, business-dashboard :5002,\n"
+    "live-map-dashboard :5003, and kafka-connect REST :8083\n"
+    "        -> Prometheus :9090 -> Alertmanager :9093\n"
+    "        -> quality-dashboard /webhook/alerts\n"
+)
+
+# ---- Runbook appendix -----------------------------------------------------
+H("Appendix B — Runbook Quick Reference")
+P(
+    "This section replaces the standalone RUNBOOK.md. Use it when operating "
+    "or demonstrating the stack."
+)
+H("First Boot", level=2)
+CODE(
+    "cd Week_02\\Day_10\\Capstone_Files\n"
+    "Copy-Item .env.example .env\n"
+    ".\\bootstrap.ps1\n"
+    "python tests\\smoke_test.py\n"
+)
+H("Demo Flow", level=2)
+OL([
+    "Open the live map at http://localhost:5003 and show aircraft, weather, and seismic tabs.",
+    "Open Kafka UI at http://localhost:8088 and show live stream topics plus config.public.* CDC topics.",
+    "Open MinIO at http://localhost:9001 and show bronze Avro, silver Avro, and gold Parquet paths.",
+    "Open Airflow at http://localhost:8080 and show 30_hop_medallion, 40_data_quality, and 50_business_kpis.",
+    "Open the business dashboard at http://localhost:5002 and explain the four gold marts.",
+    "Open the quality dashboard at http://localhost:5001 and explain rule results, DLQ sizes, and alerts.",
+    "Open Grafana at http://localhost:3000 for pipeline metrics.",
+])
+H("Common Operations", level=2)
+UL([
+    "Tail an ingestor: docker logs -f ingestor-ogn (or ingestor-noaa / ingestor-seismic).",
+    "Restart ingestors: docker compose restart ingestor-ogn ingestor-noaa ingestor-seismic.",
+    "Force a gold mart: docker exec hop python3 /files/project/transforms/silver_to_gold.py --mart=seismic_24h_summary.",
+    "Watch replication lag: docker exec config-db psql -U postgres -d config -c \"SELECT slot_name, active, restart_lsn FROM pg_replication_slots;\"",
+    "Tear down without data loss: docker compose down.",
+    "Clean slate: docker compose down -v.",
+])
+H("Troubleshooting", level=2)
+UL([
+    "bootstrap.ps1 waits forever for Kafka Connect: check docker logs connect and re-run debezium/download_plugins.ps1.",
+    "noaa.observations is empty after 5+ minutes: set a real contact value in NOAA_USER_AGENT and recreate ingestor-noaa.",
+    "seismic.events is quiet: verify the EMSC live page; quiet periods are possible.",
+    "live map disconnected: refresh the page and check docker logs live-map-dashboard.",
+    "Connect task FAILED: check plugin path, Schema Registry health, and connector status at http://localhost:8083/connectors.",
+    "gold is empty: trigger 30_hop_medallion manually; low message volume can delay bronze flushes.",
+    "Airflow webserver 502 on first hit: wait for airflow-init migration and check docker compose logs airflow-init.",
+])
+
 # ---- Submission ----------------------------------------------------------
 H("Submission Checklist")
 UL([
-    "Architecture diagram (ARCHITECTURE.md is provided — annotate or replace).",
+    "Architecture explanation from Appendix A — annotate or replace the diagram if your implementation differs.",
     "Screenshot pack: Kafka UI topics, MinIO bronze tree, MinIO gold mart, business dashboard, live map (with selected plane + magenta trail), quality dashboard during a failure.",
     "Output of python tests/smoke_test.py with all checks green.",
     "One sentence KPI definition + two dashboard artefacts (live map + business dashboard count as two).",
@@ -193,9 +328,8 @@ UL([
 H("References inside Capstone_Files/")
 UL([
     "README.md — project overview and URLs.",
-    "ARCHITECTURE.md — service inventory, topic map, medallion contracts, mart definitions.",
-    "RUNBOOK.md — terse operator handbook.",
-    "../Capstone_Guide/Capstone_Run_Guide.md — full step-by-step run guide with troubleshooting table.",
+    "../Capstone_Guide/Capstone.docx — canonical student lab guide, architecture reference, and runbook.",
+    "../Capstone_Guide/Capstone_Run_Guide.md — optional detailed operator walkthrough.",
     "bootstrap.ps1 / bootstrap.sh — idempotent stack bring-up.",
     "tests/smoke_test.py — end-to-end smoke test.",
 ])

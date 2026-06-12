@@ -26,7 +26,7 @@ title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 sub = doc.add_paragraph()
 sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = sub.add_run("Real streams  →  Kafka  →  Medallion on MinIO  →  Dashboards")
+r = sub.add_run("Real streams + CDC  →  Kafka  →  Medallion on MinIO  →  Dashboards")
 r.italic = True
 r.font.size = Pt(11)
 
@@ -49,7 +49,9 @@ doc.add_paragraph(
     "Three independent public streams plus Postgres CDC feed Kafka. "
     "Kafka Connect sinks every topic to the bronze layer in MinIO. "
     "Apache Hop / Python transforms promote bronze → silver → gold. "
-    "Two Flask dashboards read the gold marts and emit Prometheus metrics."
+    "Airflow schedules the medallion and quality/KPI jobs. "
+    "Three Flask dashboards expose the result: live map reads Kafka directly, "
+    "quality reads rule/DLQ/alert state, and business reads gold marts."
 )
 
 mono_block([
@@ -67,6 +69,8 @@ mono_block([
 "  +======================================+====================================+",
 "           ^                              |                                    ",
 "           |  config.public.*  (CDC)      |  ALL topics                        ",
+"           |                              +-----> live-map-dashboard :5003      ",
+"           |                              |       direct Kafka consumers        ",
 "           |                              v                                    ",
 "  +--------+----------+        +----------+----------+                         ",
 "  |  config-db (PG)   |        |  Kafka Connect      |                         ",
@@ -99,6 +103,7 @@ mono_block([
 "                    | quality-dashboard|     | business-dashboard|             ",
 "                    |   :5001          |     |   :5002           |             ",
 "                    +------------------+     +-------------------+             ",
+"                    live-map-dashboard :5003 consumes stream topics directly   ",
 ])
 
 doc.add_paragraph()
@@ -157,6 +162,7 @@ mono_block([
 "  MinIO /metrics      :9000 --+      rule_files: data_quality, pipeline",
 "  quality-dashboard   :5001 --+--> Prometheus :9090 --> Alertmanager :9093 --+",
 "  business-dashboard  :5002 --+                                              |",
+"  live-map-dashboard  :5003 --+                                              |",
 "  kafka-connect REST  :8083 --+                                              v",
 "                                              quality-dashboard /webhook/alerts",
 ])
@@ -175,6 +181,7 @@ rows = [
     ("kafka-ui",           "Provectus Kafka UI"),
     ("config-db",          "Postgres 15, wal_level=logical (reference tables)"),
     ("postgres-exporter",  "Prometheus exporter for config-db"),
+    ("app-base",           "Shared local image build target for ingestors + utility app"),
     ("app",                "Idle utility container (docker exec target)"),
     ("ingestor-ogn",       "OGN APRS -> ogn.aircraft.positions"),
     ("ingestor-noaa",      "NOAA REST -> noaa.observations / noaa.alerts"),
@@ -187,6 +194,7 @@ rows = [
     ("airflow-scheduler",  "DAG scheduler"),
     ("quality-dashboard",  "Flask DataOps view, /metrics, alert webhook"),
     ("business-dashboard", "Flask reading gold parquet, /metrics"),
+    ("live-map-dashboard", "Leaflet + Socket.IO map consuming Kafka stream topics directly"),
     ("prometheus",         "Metrics + rule evaluation"),
     ("alertmanager",       "Routes alerts -> quality dashboard webhook"),
     ("grafana",            "Provisioned dashboards"),

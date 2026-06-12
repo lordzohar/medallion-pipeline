@@ -17,7 +17,7 @@
 
 | Need | Why | Verify |
 |---|---|---|
-| Docker Desktop, ≥ 8 GB RAM, ≥ 20 GB free disk | the stack runs ~22 containers | `docker --version`, `docker compose version` |
+| Docker Desktop, ≥ 8 GB RAM, ≥ 20 GB free disk | the stack runs ~24 containers | `docker --version`, `docker compose version` |
 | Windows PowerShell 5+ *(or* bash on macOS/Linux*)* | `bootstrap.ps1` / `bootstrap.sh` | `pwsh --version` |
 | Python 3.11 on the host *(optional)* | runs `tests/smoke_test.py`; the bootstrap can fall back to `docker exec` | `python --version` |
 | Outbound internet | OGN APRS-IS, api.weather.gov, EMSC websocket, Docker Hub pulls, Confluent Hub plugin downloads | `curl https://api.weather.gov` |
@@ -40,7 +40,7 @@ cd Week_02\Day_10\Capstone_Files
 
 1. Confirms `.env` exists (copies from `.env.example` if not).
 2. Downloads Kafka Connect plugins + the JMX Prometheus agent (skips if already cached under [debezium/plugins/](../Capstone_Files/debezium/plugins/) and [monitoring/jmx_exporter/](../Capstone_Files/monitoring/jmx_exporter/)).
-3. `docker compose --env-file .env up -d` (~22 containers, see [docker-compose.yml](../Capstone_Files/docker-compose.yml)).
+3. `docker compose --env-file .env up -d` (~24 containers, see [docker-compose.yml](../Capstone_Files/docker-compose.yml)).
 4. Polls MinIO, Schema Registry, Kafka Connect, Airflow until each is healthy.
 5. Creates the three MinIO buckets (`bronze`, `silver`, `gold`).
 6. Registers the 4 Avro schemas with Schema Registry ([app/register_app_schemas.py](../Capstone_Files/app/register_app_schemas.py)).
@@ -311,7 +311,6 @@ docker compose down -v         # also wipes MinIO + Postgres volumes (clean slat
    grafana :3000 → provisioned dashboards
 ```
 
-See [Capstone_Files/ARCHITECTURE.md](../Capstone_Files/ARCHITECTURE.md) for
-the full service inventory, topic/subject map, medallion contracts, and
-gold-mart definitions. See [Capstone_Files/RUNBOOK.md](../Capstone_Files/RUNBOOK.md)
-for the same demo script in shorter form.
+See [Capstone.docx](Capstone.docx) for the canonical student guide, including
+the full architecture reference, topic/subject map, medallion contracts,
+gold-mart definitions, and runbook appendix.

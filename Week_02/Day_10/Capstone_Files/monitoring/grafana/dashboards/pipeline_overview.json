@@ -1,55 +1,379 @@
 {
-  "title": "Pipeline overview",
+  "title": "Medallion Pipeline — Overview",
   "uid": "pipeline-overview",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
+  "tags": ["medallion", "pipeline", "overview", "capstone"],
+  "editable": true,
+  "graphTooltip": 1,
+  "style": "dark",
   "refresh": "15s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "15s", "30s", "1m", "5m", "15m", "30m", "1h", "6h", "12h", "24h"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "name": "window",
+        "label": "Rolling window",
+        "type": "interval",
+        "query": "1m,5m,15m,1h,6h",
+        "current": { "selected": true, "text": "5m", "value": "5m" },
+        "auto": false,
+        "auto_count": 30,
+        "auto_min": "10s",
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "topic",
+        "label": "Kafka topic",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(kafka_server_brokertopicmetrics_messagesin_per_sec, topic)",
+        "query": {
+          "query": "label_values(kafka_server_brokertopicmetrics_messagesin_per_sec, topic)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "sort": 1,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "rule",
+        "label": "Quality rule",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(quality_rule_results_total, rule)",
+        "query": {
+          "query": "label_values(quality_rule_results_total, rule)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "sort": 1,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "mart",
+        "label": "Gold mart",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(business_dashboard_mart_rows, mart)",
+        "query": {
+          "query": "label_values(business_dashboard_mart_rows, mart)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "sort": 1,
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Firing alerts",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{alertname}} • {{severity}} • {{instance}}",
+        "tagKeys": "severity,job,alertname"
+      }
+    ]
+  },
+  "links": [
+    { "title": "Quality dashboard (Flask)", "url": "http://localhost:5002", "type": "link", "targetBlank": true, "icon": "external link" },
+    { "title": "Business KPI dashboard (Flask)", "url": "http://localhost:5003", "type": "link", "targetBlank": true, "icon": "external link" },
+    { "title": "Live map dashboard", "url": "http://localhost:5001", "type": "link", "targetBlank": true, "icon": "external link" },
+    { "title": "Airflow UI", "url": "http://localhost:8080", "type": "link", "targetBlank": true, "icon": "external link" },
+    { "title": "MinIO console", "url": "http://localhost:9001", "type": "link", "targetBlank": true, "icon": "external link" }
+  ],
   "panels": [
+    { "id": 1, "type": "row", "title": "Service health & SLOs", "collapsed": false, "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "panels": [] },
+
     {
-      "type": "stat",
-      "title": "Active alerts",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "sum(quality_active_alerts)", "refId": "A" }
-      ]
+      "id": 2, "type": "stat", "title": "Active alerts",
+      "description": "Sum of quality_active_alerts. Anything > 0 means a quality alert is firing.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "targets": [ { "expr": "sum(quality_active_alerts)", "refId": "A", "legendFormat": "alerts" } ],
+      "fieldConfig": { "defaults": {
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] },
+        "unit": "short", "noValue": "0"
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal", "textMode": "auto", "colorMode": "background", "graphMode": "area", "justifyMode": "auto" }
     },
     {
-      "type": "stat",
-      "title": "DLQ messages (sum)",
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "sum(quality_dlq_size)", "refId": "A" }
-      ]
+      "id": 3, "type": "stat", "title": "DLQ messages (sum)",
+      "description": "Total messages sitting in dead-letter topics. Should trend to zero.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "targets": [ { "expr": "sum(quality_dlq_size)", "refId": "A", "legendFormat": "dlq" } ],
+      "fieldConfig": { "defaults": {
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 100 } ] },
+        "unit": "short", "noValue": "0"
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal", "textMode": "auto", "colorMode": "background", "graphMode": "area", "justifyMode": "auto" }
     },
     {
-      "type": "timeseries",
-      "title": "Kafka messages-in per topic",
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "rate(kafka_server_brokertopicmetrics_messagesin_per_sec[1m])",
-          "legendFormat": "{{ topic }}", "refId": "A" }
-      ]
+      "id": 4, "type": "gauge", "title": "Quality pass rate (1h)",
+      "description": "PASS / (PASS+FAIL) over the last hour, across the selected rules.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "targets": [ { "expr": "100 * sum(increase(quality_rule_results_total{status=\"PASS\", rule=~\"$rule\"}[1h])) / clamp_min(sum(increase(quality_rule_results_total{rule=~\"$rule\"}[1h])), 1)", "refId": "A", "legendFormat": "pass %" } ],
+      "fieldConfig": { "defaults": {
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "orange", "value": 90 }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 99 } ] },
+        "unit": "percent", "min": 0, "max": 100, "decimals": 1
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true }
     },
     {
-      "type": "timeseries",
-      "title": "Quality rule passes / fails",
-      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
-      "targets": [
-        { "expr": "increase(quality_rule_results_total{status=\"PASS\"}[5m])",
-          "legendFormat": "PASS {{ rule }}", "refId": "A" },
-        { "expr": "increase(quality_rule_results_total{status=\"FAIL\"}[5m])",
-          "legendFormat": "FAIL {{ rule }}", "refId": "B" }
-      ]
+      "id": 5, "type": "stat", "title": "Scrape targets up",
+      "description": "Percent of Prometheus scrape targets currently UP.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "targets": [ { "expr": "100 * sum(up) / count(up)", "refId": "A", "legendFormat": "up %" } ],
+      "fieldConfig": { "defaults": {
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 99 } ] },
+        "unit": "percent", "min": 0, "max": 100, "decimals": 0
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal", "textMode": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto" }
     },
     {
-      "type": "timeseries",
-      "title": "Gold mart row counts",
-      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "id": 6, "type": "stat", "title": "Kafka offline partitions",
+      "description": "Must stay at 0. Anything else means broken Kafka replication.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "targets": [ { "expr": "sum(kafka_controller_kafkacontroller_offlinepartitionscount) OR on() vector(0)", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 1 } ] },
+        "unit": "short", "noValue": "0"
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal", "textMode": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto" }
+    },
+    {
+      "id": 7, "type": "stat", "title": "Total gold rows",
+      "description": "Sum of business_dashboard_mart_rows over the selected marts.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "targets": [ { "expr": "sum(business_dashboard_mart_rows{mart=~\"$mart\"})", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] },
+        "unit": "short", "noValue": "0"
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto" }
+    },
+
+    { "id": 10, "type": "row", "title": "Kafka throughput", "collapsed": false, "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }, "panels": [] },
+
+    {
+      "id": 11, "type": "timeseries", "title": "Messages in per topic",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 6, "w": 16, "h": 8 },
+      "targets": [ { "expr": "sum by (topic) (rate(kafka_server_brokertopicmetrics_messagesin_per_sec{topic=~\"$topic\"}[$window]))", "legendFormat": "{{topic}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "mps",
+        "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15, "showPoints": "never", "spanNulls": true },
+        "color": { "mode": "palette-classic" }
+      }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 12, "type": "bargauge", "title": "Top topics by msg/s (now)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 16, "y": 6, "w": 8, "h": 8 },
+      "targets": [ { "expr": "topk(10, sum by (topic) (rate(kafka_server_brokertopicmetrics_messagesin_per_sec{topic=~\"$topic\"}[$window])))", "legendFormat": "{{topic}}", "refId": "A", "instant": true } ],
+      "fieldConfig": { "defaults": { "unit": "mps", "color": { "mode": "continuous-GrYlRd" } }, "overrides": [] },
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Bytes in per topic",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 7 },
+      "targets": [ { "expr": "sum by (topic) (rate(kafka_server_brokertopicmetrics_bytesin_per_sec{topic=~\"$topic\"}[$window]))", "legendFormat": "{{topic}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "Bps",
+        "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15, "showPoints": "never", "spanNulls": true }
+      }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 14, "type": "timeseries", "title": "Bytes out per topic",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 7 },
+      "targets": [ { "expr": "sum by (topic) (rate(kafka_server_brokertopicmetrics_bytesout_per_sec{topic=~\"$topic\"}[$window]))", "legendFormat": "{{topic}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "Bps",
+        "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15, "showPoints": "never", "spanNulls": true }
+      }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+
+    { "id": 20, "type": "row", "title": "Data quality", "collapsed": false, "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 }, "panels": [] },
+
+    {
+      "id": 21, "type": "timeseries", "title": "Quality rule PASS vs FAIL",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 22, "w": 16, "h": 8 },
       "targets": [
-        { "expr": "business_dashboard_mart_rows",
-          "legendFormat": "{{ mart }}", "refId": "A" }
-      ]
+        { "expr": "sum by (rule) (increase(quality_rule_results_total{status=\"PASS\", rule=~\"$rule\"}[$window]))", "legendFormat": "PASS · {{rule}}", "refId": "A" },
+        { "expr": "sum by (rule) (increase(quality_rule_results_total{status=\"FAIL\", rule=~\"$rule\"}[$window]))", "legendFormat": "FAIL · {{rule}}", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": {
+        "unit": "short",
+        "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal", "group": "A" } }
+      }, "overrides": [
+        { "matcher": { "id": "byRegexp", "options": "/^FAIL · .*/" },
+          "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] },
+        { "matcher": { "id": "byRegexp", "options": "/^PASS · .*/" },
+          "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }
+      ] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum", "lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 22, "type": "gauge", "title": "Pass rate (window)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 16, "y": 22, "w": 8, "h": 8 },
+      "targets": [ { "expr": "100 * sum(increase(quality_rule_results_total{status=\"PASS\", rule=~\"$rule\"}[$window])) / clamp_min(sum(increase(quality_rule_results_total{rule=~\"$rule\"}[$window])), 1)", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "percent", "min": 0, "max": 100, "decimals": 1,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "orange", "value": 90 }, { "color": "yellow", "value": 95 }, { "color": "green", "value": 99 } ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdMarkers": true, "showThresholdLabels": false, "orientation": "auto" }
+    },
+    {
+      "id": 23, "type": "timeseries", "title": "DLQ size by topic",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 7 },
+      "targets": [ { "expr": "quality_dlq_size", "legendFormat": "{{topic}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "short",
+        "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 20, "showPoints": "never", "spanNulls": true }
+      }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 24, "type": "table", "title": "Top failing rules ($window)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 12, "y": 30, "w": 12, "h": 7 },
+      "targets": [ { "expr": "topk(10, sum by (rule) (increase(quality_rule_results_total{status=\"FAIL\", rule=~\"$rule\"}[$window])))", "legendFormat": "{{rule}}", "refId": "A", "instant": true, "format": "table" } ],
+      "transformations": [
+        { "id": "organize", "options": {
+          "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true },
+          "renameByName": { "rule": "Rule", "Value": "Failures" }
+        } }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "displayMode": "color-background-solid" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Failures" },
+            "properties": [
+              { "id": "color", "value": { "mode": "continuous-YlRd" } },
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "unit", "value": "short" }
+            ] }
+        ] },
+      "options": { "showHeader": true, "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+    },
+
+    { "id": 30, "type": "row", "title": "Medallion · Gold marts", "collapsed": false, "gridPos": { "x": 0, "y": 37, "w": 24, "h": 1 }, "panels": [] },
+
+    {
+      "id": 31, "type": "timeseries", "title": "Gold mart row counts (trend)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 38, "w": 14, "h": 8 },
+      "targets": [ { "expr": "business_dashboard_mart_rows{mart=~\"$mart\"}", "legendFormat": "{{mart}}", "refId": "A" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "short",
+        "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10, "showPoints": "never", "spanNulls": true },
+        "color": { "mode": "palette-classic" }
+      }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max", "mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 32, "type": "bargauge", "title": "Current mart sizes",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 14, "y": 38, "w": 10, "h": 8 },
+      "targets": [ { "expr": "business_dashboard_mart_rows{mart=~\"$mart\"}", "legendFormat": "{{mart}}", "refId": "A", "instant": true } ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "continuous-BlPu" } }, "overrides": [] },
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 33, "type": "stat", "title": "Rows added per mart (last $window)",
+      "description": "max_over_time − min_over_time per mart. Zero (or negative) means the mart was static or rebuilt during the window.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "x": 0, "y": 46, "w": 24, "h": 4 },
+      "targets": [ { "expr": "max_over_time(business_dashboard_mart_rows{mart=~\"$mart\"}[$window]) - min_over_time(business_dashboard_mart_rows{mart=~\"$mart\"}[$window])", "legendFormat": "{{mart}}", "refId": "A", "instant": true } ],
+      "fieldConfig": { "defaults": {
+        "unit": "short",
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "blue", "value": null }, { "color": "green", "value": 1 } ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal", "textMode": "value_and_name", "colorMode": "value", "graphMode": "none", "justifyMode": "auto" }
     }
   ]
 }
