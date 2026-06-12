@@ -51,15 +51,43 @@ def _hash(records: list[dict]) -> str:
     return h.hexdigest()[:12]
 
 
-def _flat_schema(sample: dict, name: str) -> dict:
-    def avro_for(v):
-        if isinstance(v, bool):  return "boolean"
-        if isinstance(v, int):   return "long"
-        if isinstance(v, float): return "double"
+def _flat_schema(records: list[dict] | dict, name: str) -> dict:
+    rows = records if isinstance(records, list) else [records]
+
+    def avro_for(values):
+        has_float = False
+        has_int = False
+        has_bool = False
+        for v in values:
+            if v is None:
+                continue
+            if isinstance(v, bool):
+                has_bool = True
+            elif isinstance(v, int):
+                has_int = True
+            elif isinstance(v, float):
+                has_float = True
+            else:
+                return "string"
+        if has_float:
+            return "double"
+        if has_int:
+            return "long"
+        if has_bool:
+            return "boolean"
         return "string"
+
+    keys = []
+    seen = set()
+    for row in rows:
+        for key in row:
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+
     fields = []
-    for k, v in sample.items():
-        t = avro_for(v) if v is not None else "string"
+    for k in keys:
+        t = avro_for([row.get(k) for row in rows])
         fields.append({"name": k, "type": ["null", t], "default": None})
     return {"type": "record", "name": name, "namespace": "org.pipeline.silver", "fields": fields}
 
@@ -136,7 +164,7 @@ def stream(topic: str) -> None:
     if not deduped:
         _emit_quality(entity, rows_in, 0, late_dropped, 0); return
 
-    schema = _flat_schema(deduped[0], f"{entity}_silver")
+    schema = _flat_schema(deduped, f"{entity}_silver")
     when = datetime.now(timezone.utc)
     key = _silver_key(entity, when, _hash(deduped))
     n = write_avro(SILVER, key, schema, deduped)
@@ -163,7 +191,7 @@ def cdc(topic: str) -> None:
     if not deduped:
         _emit_quality(entity, rows_in, 0, late_dropped, 0); return
 
-    schema = _flat_schema(deduped[0], f"{entity}_silver")
+    schema = _flat_schema(deduped, f"{entity}_silver")
     when = datetime.now(timezone.utc)
     key = _silver_key(entity, when, _hash(deduped))
     n = write_avro(SILVER, key, schema, deduped)

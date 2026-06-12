@@ -6,11 +6,12 @@ cd "$(dirname "$0")"
 [ -f .env ] || cp .env.example .env
 
 if [ ! -f monitoring/jmx_exporter/jmx_prometheus_javaagent.jar ] \
-   || [ ! -d debezium/plugins/confluentinc-kafka-connect-s3 ]; then
+   || [ ! -d debezium/plugins/confluentinc-kafka-connect-s3-10.5.13 ]; then
     bash debezium/download_plugins.sh
 fi
 
-docker compose --env-file .env up -d
+docker compose --env-file .env --progress=plain build app-base
+docker compose --env-file .env --progress=plain up -d
 
 wait_http() {
     local name="$1" url="$2" timeout="${3:-240}" t0=$(date +%s)
@@ -30,15 +31,49 @@ wait_http "airflow"         "http://localhost:8080/health"
 export MINIO_ENDPOINT=http://localhost:9000
 export SCHEMA_REGISTRY_URL=http://localhost:8081
 export KAFKA_CONNECT_URL=http://localhost:8083
-# shellcheck disable=SC2046
-export $(grep -v '^\s*#' .env | xargs)
+
+load_env() {
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" || "$line" == \#* || "$line" != *=* ]] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        key="${key%"${key##*[![:space:]]}"}"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        export "$key=$value"
+    done < .env
+}
+
+load_env
+
+create_topic() {
+    local topic="$1" partitions="${2:-1}"
+    docker exec kafka sh -lc \
+        "unset KAFKA_OPTS; kafka-topics --bootstrap-server localhost:29092 --create --if-not-exists --topic '$topic' --partitions '$partitions' --replication-factor 1" \
+        >/dev/null
+    echo "[ok] topic $topic"
+}
+
+create_topic "ogn.aircraft.positions" 3
+create_topic "noaa.observations" 3
+create_topic "noaa.alerts" 1
+create_topic "seismic.events" 3
+create_topic "config.public.regions" 1
+create_topic "config.public.alert_thresholds" 1
+create_topic "config.public.subscriber_watchlist" 1
+create_topic "__debezium-heartbeat.config" 1
+create_topic "dlq.config-source" 1
+create_topic "dlq.s3-sink-bronze-streams" 1
+create_topic "dlq.s3-sink-bronze-cdc" 1
 
 run_py() {
     local script="$1"
     if command -v python3 >/dev/null && python3 -c "import boto3,requests,minio" 2>/dev/null; then
         python3 "$script"
     else
-        docker exec airflow-webserver python "$script"
+        docker exec airflow-webserver python "/opt/$script"
     fi
 }
 

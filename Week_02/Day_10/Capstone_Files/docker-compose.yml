@@ -48,6 +48,7 @@ x-airflow-common: &airflow-common
     - ./hop:/opt/hop_project:ro
     - ./app:/opt/app:ro
     - ./debezium:/opt/debezium:ro
+    - ./minio:/opt/minio:ro
     - airflow-logs:/opt/airflow/logs
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID}:0"
@@ -71,7 +72,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q 'Mode:'"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -101,7 +102,7 @@ services:
     volumes:
       - ./monitoring/jmx_exporter:/opt/jmx_exporter:ro
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "unset KAFKA_OPTS; kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 15
@@ -349,6 +350,35 @@ services:
       - hop-cache:/root/.hop
     networks: [pipeline]
 
+  hop-web:
+    image: apache/hop-web:2.10.0
+    container_name: hop-web
+    depends_on:
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports: ["${HOP_GUI_PORT}:8080"]
+    environment:
+      HOP_PROJECT_NAME: day10
+      HOP_PROJECT_FOLDER: ${HOP_PROJECT_HOME}
+      HOP_PROJECT_CONFIG_FILE_NAME: project.json
+      HOP_ENVIRONMENT_NAME: day10
+      HOP_OPTIONS: "-Xmx768m -Xms256m"
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT_INTERNAL}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFIG_PG_HOST: config-db
+      CONFIG_PG_USER: ${CONFIG_PG_USER}
+      CONFIG_PG_PASSWORD: ${CONFIG_PG_PASSWORD}
+      CONFIG_PG_DB: ${CONFIG_PG_DB}
+    volumes:
+      - ./hop:/files/project
+      - hop-web-cache:/root/.hop
+    networks: [pipeline]
+
   # =================================================================
   # Airflow (LocalExecutor)
   # =================================================================
@@ -529,3 +559,4 @@ volumes:
   prometheus-data:
   grafana-data:
   hop-cache:
+  hop-web-cache:

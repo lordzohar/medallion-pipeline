@@ -40,7 +40,7 @@ fetch_tgz() {
     rm -f "$tmp"
 }
 
-fetch_zip "confluentinc-kafka-connect-s3" \
+fetch_zip "confluentinc-kafka-connect-s3-10.5.13" \
     "https://hub-downloads.confluent.io/api/plugins/confluentinc/kafka-connect-s3/versions/10.5.13/confluentinc-kafka-connect-s3-10.5.13.zip"
 
 fetch_tgz "debezium-connector-postgres" \

@@ -52,8 +52,8 @@ def main() -> None:
             cur.execute("""
                 INSERT INTO subscriber_watchlist (region_id, source, channel, recipient)
                 SELECT region_id,
-                       (ARRAY['ogn','noaa','seismic','*'])[1 + (random()*3.99)::int],
-                       (ARRAY['email','slack','webhook'])[1 + (random()*2.99)::int],
+                       (ARRAY['ogn','noaa','seismic','*'])[1 + floor(random()*4)::int],
+                       (ARRAY['email','slack','webhook'])[1 + floor(random()*3)::int],
                        %s
                   FROM regions ORDER BY random() LIMIT 1
             """, (f"drift-{uuid.uuid4().hex[:8]}@example.org",))

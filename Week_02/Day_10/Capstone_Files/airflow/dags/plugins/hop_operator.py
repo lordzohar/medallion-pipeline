@@ -23,7 +23,7 @@ from airflow.models import BaseOperator
 
 
 class HopOperator(BaseOperator):
-    template_fields: Sequence[str] = ("script", "args", "workflow", "pipeline", "params")
+    template_fields: Sequence[str] = ("script", "args", "workflow", "pipeline", "hop_params")
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class HopOperator(BaseOperator):
         args: list[str] | None = None,
         workflow: str | None = None,
         pipeline: str | None = None,
-        params: dict[str, str] | None = None,
+        hop_params: dict[str, str] | None = None,
         container: str | None = None,
         timeout: int = 600,
         **kwargs,
@@ -46,7 +46,7 @@ class HopOperator(BaseOperator):
         self.args      = args or []
         self.workflow  = workflow
         self.pipeline  = pipeline
-        self.params    = params or {}
+        self.hop_params = hop_params or {}
         self.container = container or os.environ.get("HOP_CONTAINER", "hop")
         self.timeout   = timeout
 
@@ -74,7 +74,7 @@ class HopOperator(BaseOperator):
                 cmd.append(f"--workflow=/files/project/workflows/{self.workflow}")
             if self.pipeline:
                 cmd.append(f"--file=/files/project/pipelines/{self.pipeline}")
-            for k, v in self.params.items():
+            for k, v in self.hop_params.items():
                 cmd.append(f"--parameters={k}={v}")
 
         self.log.info("Hop exec: %s", " ".join(shlex.quote(c) for c in cmd))

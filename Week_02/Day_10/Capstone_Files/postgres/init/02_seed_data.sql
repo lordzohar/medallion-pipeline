@@ -40,13 +40,13 @@ WITH g AS (
     (random() * 360 - 180)::float AS clon,       -- -180 .. 180
     (random() * 0.4 + 0.1)::float AS half_lat,   -- box half-height
     (random() * 0.6 + 0.1)::float AS half_lon,   -- box half-width
-    (ARRAY['airport','weather_station','seismic_zone','metro'])[1 + (random()*3.99)::int] AS kind
+    (ARRAY['airport','weather_station','seismic_zone','metro'])[1 + floor(random()*4)::int] AS kind
   FROM generate_series(1, 980) i
 )
 INSERT INTO regions (name, country, kind, min_lat, max_lat, min_lon, max_lon, station_code)
 SELECT
     'auto-region-' || lpad(i::text, 4, '0'),
-    (ARRAY['US','DE','FR','BR','IN','JP','GB','CN','ZA','AU','MX','CA','IT','ES','AR'])[1 + (random()*14.99)::int],
+    (ARRAY['US','DE','FR','BR','IN','JP','GB','CN','ZA','AU','MX','CA','IT','ES','AR'])[1 + floor(random()*15)::int],
     kind,
     greatest(clat - half_lat, -89),
     least(clat + half_lat, 89),
@@ -81,9 +81,9 @@ WITH t AS (
   SELECT
     s.source,
     m.metric,
-    (ARRAY['>','>=','<','<='])[1 + (random()*3.99)::int] AS op,
+    (ARRAY['>','>=','<','<='])[1 + floor(random()*4)::int] AS op,
     (random() * 100)::float AS threshold,
-    (ARRAY['info','warning','critical'])[1 + (random()*2.99)::int] AS severity
+    (ARRAY['info','warning','critical'])[1 + floor(random()*3)::int] AS severity
   FROM (VALUES ('ogn'), ('noaa'), ('seismic')) AS s(source)
   CROSS JOIN (VALUES ('lag_ms'), ('rate_per_min'), ('null_rate_pct')) AS m(metric)
   CROSS JOIN generate_series(1,3)
@@ -113,8 +113,8 @@ WHERE r.station_code IS NOT NULL OR r.kind = 'seismic_zone';
 INSERT INTO subscriber_watchlist (region_id, source, channel, recipient)
 SELECT
     r.region_id,
-    (ARRAY['ogn','noaa','seismic','*'])[1 + (random()*3.99)::int],
-    (ARRAY['email','slack','webhook'])[1 + (random()*2.99)::int],
+    (ARRAY['ogn','noaa','seismic','*'])[1 + floor(random()*4)::int],
+    (ARRAY['email','slack','webhook'])[1 + floor(random()*3)::int],
     'auto-sub-' || lpad((row_number() OVER ())::text, 4, '0') || '@example.org'
 FROM regions r
 ORDER BY random()
